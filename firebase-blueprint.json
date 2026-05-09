@@ -1,0 +1,142 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "bio": { "type": "string" },
+        "role": { "type": "string", "enum": ["CEO", "ADM", "MOD", "USER"] },
+        "favoriteGames": { "type": "array", "items": { "type": "string" } },
+        "level": { "type": "number" },
+        "badges": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "email", "role", "createdAt"]
+    },
+    "Save": {
+      "title": "Save",
+      "description": "Game save data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "game": { "type": "string" },
+        "team": { "type": "string" },
+        "season": { "type": "string" },
+        "tactic": { "type": "string" },
+        "objective": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "description": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "name", "game", "createdAt", "updatedAt"]
+    },
+    "AppLog": {
+      "title": "AppLog",
+      "description": "Application update logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "version": { "type": "string" },
+        "date": { "type": "number" },
+        "type": { "type": "string", "enum": ["update", "fix", "news"] },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "title", "version", "date", "type", "description"]
+    },
+    "GeneratorList": {
+      "title": "GeneratorList",
+      "description": "Lists for the offline career generator",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "game": { "type": "string" },
+        "teams": { "type": "array", "items": { "type": "string" } },
+        "objectives": { "type": "array", "items": { "type": "string" } },
+        "rules": { "type": "array", "items": { "type": "string" } },
+        "styles": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["id", "game", "teams", "objectives", "rules", "styles"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "User or content reports",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reportedBy": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["user", "save"] },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "resolved", "dismissed"] },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "reportedBy", "targetId", "targetType", "reason", "status", "createdAt"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "generatorActive": { "type": "boolean" },
+        "uploadsAllowed": { "type": "boolean" },
+        "logsPublic": { "type": "boolean" },
+        "reportsEnabled": { "type": "boolean" },
+        "dailySaveLimit": { "type": "number" },
+        "dailyGenLimit": { "type": "number" }
+      },
+      "required": ["generatorActive", "uploadsAllowed", "logsPublic", "reportsEnabled", "dailySaveLimit", "dailyGenLimit"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "saves/{saveId}": {
+      "schema": "Save",
+      "description": "Game saves"
+    },
+    "logs/{logId}": {
+      "schema": "AppLog",
+      "description": "Application update logs"
+    },
+    "generator_lists/{listId}": {
+      "schema": "GeneratorList",
+      "description": "Generator source data"
+    },
+    "reports/{reportId}": {
+      "schema": "Report",
+      "description": "User reports"
+    },
+    "settings/global": {
+      "schema": "AppSettings",
+      "description": "Global app configuration"
+    },
+    "official_challenges/{id}": {
+      "schema": "OfficialChallenge",
+      "description": "Official challenges"
+    },
+    "library_ideas/{id}": {
+      "schema": "LibraryIdea",
+      "description": "Library ideas and tips"
+    },
+    "community_tips/{id}": {
+      "schema": "CommunityTip",
+      "description": "User submitted tips"
+    },
+    "imported_careers/{id}": {
+      "schema": "ImportedCareer",
+      "description": "Imported career paths"
+    }
+  }
+}

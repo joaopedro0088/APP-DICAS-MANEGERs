@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@keyframes shake {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+  75% { transform: translateX(-5px); }
+  100% { transform: translateX(0); }
+}
+
+.animate-shake {
+  animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Theme support */
+.theme-neon {
+  --neon-purple: #9D4EDD;
+  --glow-shadow: 0 0 15px rgba(157, 78, 221, 0.4);
+}
+
+.theme-neon .text-\[\#7B2CBF\] {
+  color: var(--neon-purple);
+  text-shadow: var(--glow-shadow);
+}
+
+.theme-neon .bg-\[\#7B2CBF\] {
+  background-color: var(--neon-purple);
+  box-shadow: var(--glow-shadow);
+}
+
+.theme-black {
+  --bg-primary: #000000;
+}
+
+body.theme-black {
+  background-color: #000000;
+}
+
+/* Disability of animations */
+.no-animations * {
+  animation: none !important;
+  transition: none !important;
+}

@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+    
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+    
+    // Role Helpers (Cached per request in production, but let's be explicit)
+    function currentRole() {
+      return getUserData(request.auth.uid).role;
+    }
+    
+    function isCEO() { return isSignedIn() && currentRole() == 'CEO'; }
+    function isADM() { return isSignedIn() && (currentRole() == 'ADM' || currentRole() == 'CEO'); }
+    function isMOD() { return isSignedIn() && (currentRole() == 'MOD' || isADM()); }
+
+    // --- VALIDATION BLUEPRINTS ---
+    
+    function isValidUser(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['CEO', 'ADM', 'MOD', 'USER'];
+    }
+    
+    function isValidSave(data) {
+      return data.userId == request.auth.uid &&
+             data.name is string && data.name.size() <= 100 &&
+             data.game is string && data.game.size() <= 100 &&
+             data.team is string && data.team.size() <= 100 &&
+             data.description is string && data.description.size() <= 1000;
+    }
+
+    function isValidLog(data) {
+      return data.title is string && data.title.size() <= 100 &&
+             data.version is string && data.version.size() <= 20 &&
+             data.description is string && data.description.size() <= 2000;
+    }
+
+    // --- RULES ---
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().role == 'USER';
+      allow update: if isSignedIn() && (
+        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'photoUrl', 'bio', 'favoriteGames']) && isValidUser(incoming())) ||
+        (isADM() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'level', 'badges']) && isValidUser(incoming()))
+      );
+      allow delete: if isCEO();
+    }
+
+    match /saves/{saveId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isMOD());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isMOD());
+      allow create: if isSignedIn() && isValidSave(incoming());
+      allow update: if isSignedIn() && (
+        (isOwner(existing().userId) && isValidSave(incoming())) ||
+        (isADM() && incoming().diff(existing()).affectedKeys().hasOnly(['description']) && isValidSave(incoming()))
+      );
+      allow delete: if isSignedIn() && (isOwner(existing().userId) || isADM());
+    }
+
+    match /logs/{logId} {
+      allow read: if true;
+      allow write: if isCEO() && isValidLog(incoming());
+    }
+
+    match /generator_lists/{listId} {
+      allow read: if true;
+      allow write: if isCEO();
+    }
+
+    match /reports/{reportId} {
+      allow create: if isSignedIn();
+      allow read, list: if isMOD();
+      allow update, delete: if isADM();
+    }
+
+    match /settings/global {
+      allow read: if true;
+      allow write: if isCEO();
+    }
+  }
+}
