@@ -19,7 +19,11 @@ export default function CareersDiscoveryView() {
 
   useEffect(() => {
     const fetchCareers = async () => {
-      setCareers(await storage.getImportedCareers());
+      try {
+        setCareers(await storage.getImportedCareers());
+      } catch (error) {
+        console.error("Failed to fetch careers:", error);
+      }
     };
     fetchCareers();
   }, []);
@@ -37,27 +41,47 @@ export default function CareersDiscoveryView() {
     const user = storage.getCurrentUser();
     if (!user) return;
 
-    const newSave: Save = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: user.id,
-      name: `Desafio: ${career.name}`,
-      game: career.game,
-      team: career.team,
-      season: '2024/25',
-      tactic: career.style,
-      philosophy: 'Varia',
-      objective: career.objective,
-      difficulty: career.difficulty,
-      description: `Aceito da Curadoria.\nTipo: ${career.type}\nRegras: ${career.rules}`,
-      images: [],
-      history: [],
-      goals: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+    try {
+      // Check for duplicate
+      const currentSaves = await storage.getSaves(user.id);
+      const isDuplicate = currentSaves.some(s => s.originId === career.id);
+      
+      if (isDuplicate) {
+        alert("Você já aceitou este desafio! Visualize em Meus Saves.");
+        return;
+      }
 
-    await storage.addSave(newSave);
-    alert("Desafio aceito! Visualize em Meus Saves.");
+      const newSave: Save = {
+        id: Math.random().toString(36).substr(2, 9),
+        userId: user.id,
+        name: `Desafio: ${career.name}`,
+        game: career.game,
+        team: career.team,
+        category: career.category || 'Rebuild',
+        selectedDuration: 5,
+        season: '2024/25',
+        tactic: career.style,
+        philosophy: 'Varia',
+        objective: career.objective,
+        difficulty: career.difficulty,
+        description: `Aceito da Curadoria.\nTipo: ${career.type}\nRegras: ${career.rules}`,
+        originId: career.id,
+        images: [],
+        history: [],
+        goals: [],
+        status: 'active',
+        theme: 'default',
+        clubHistory: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      await storage.addSave(newSave);
+      alert("Desafio aceito! Visualize em Meus Saves.");
+    } catch (error) {
+      console.error("Failed to accept career:", error);
+      alert("Erro ao aceitar desafio. Tente novamente.");
+    }
   };
 
   return (
@@ -166,7 +190,8 @@ function CareerCard({ career, onAccept }: any) {
             <p className="text-xs text-[#7B2CBF] font-bold uppercase">{career.game}</p>
           </div>
           <div className={`px-3 py-1 rounded-full border text-[9px] font-black uppercase ${
-            career.difficulty === 'Extremo' ? 'border-red-500/20 text-red-500' :
+            career.difficulty === 'Extremo' ? 'border-red-500/20 text-red-500 shadow-[0_0_10px_rgba(239,68,68,0.1)]' :
+            career.difficulty === 'Lendário' ? 'border-yellow-500/30 text-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.2)]' :
             career.difficulty === 'Difícil' ? 'border-orange-500/20 text-orange-500' :
             'border-[#2D2D2D] text-[#A0A0A0]'
           }`}>

@@ -4,13 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Home, Zap, Save as SaveIcon, User as UserIcon, Settings, Shield, Terminal, LogOut, Compass, Book } from 'lucide-react';
+import { Home, Zap, Save as SaveIcon, User as UserIcon, Settings, Shield, Terminal, LogOut, Compass, Book, History, Trophy, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDocFromServer } from 'firebase/firestore';
+import { doc, getDocFromServer, onSnapshot } from 'firebase/firestore';
 import { storage } from './store';
+import { INITIAL_GEN_LISTS } from './data/generatorData';
 import { User, UserRole, ImportedCareer } from './types';
 import { auth, db } from './firebase';
+import { GAMES } from './constants';
 
 // Views
 import HomeView from './views/HomeView';
@@ -22,10 +24,12 @@ import LogsView from './views/LogsView';
 import LibraryView from './views/LibraryView';
 import LoginView from './views/LoginView';
 import CareersDiscoveryView from './views/CareersDiscoveryView';
+import HallOfFameView from './views/HallOfFameView';
+import WeeklyEventsView from './views/WeeklyEventsView';
 import SettingsModal from './components/SettingsModal';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'home' | 'generator' | 'saves' | 'profile' | 'library' | 'careers'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'generator' | 'saves' | 'profile' | 'library' | 'careers' | 'halloffame' | 'events'>('home');
   const [user, setUser] = useState<User | null>(null);
   const [isAdminView, setIsAdminView] = useState(false);
   const [isLogsView, setIsLogsView] = useState(false);
@@ -34,162 +38,118 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 8000); // 8 seconds for slower connections
+
     // Test connection
     const testConnection = async () => {
       try {
-        await getDocFromServer(doc(db, 'settings', 'global'));
+        const docRef = doc(db, 'settings', 'global');
+        // Simple reachability check
+        await getDocFromServer(docRef);
         setDbStatus({ ok: true, message: 'Fox Cloud: Ativa e Segura' });
       } catch (error: any) {
-        if (error.message?.includes('offline')) {
-          setDbStatus({ ok: false, message: 'Sem conexão com o banco' });
+        console.error("Firestore test connection error:", error);
+        const errorMessage = (error.message || "").toLowerCase();
+        
+        // Only show error if it's explicitly a connection/offline issue
+        if (errorMessage.includes('offline') || errorMessage.includes('unavailable') || errorMessage.includes('network') || errorMessage.includes('failed to connect')) {
+          setDbStatus({ ok: false, message: 'Fox Cloud: Offline - Verifique sua conexão' });
+        } else if (errorMessage.includes('quota') || errorMessage.includes('limit exceeded')) {
+          setDbStatus({ ok: false, message: 'Fox Cloud: Limite de Uso Excedido' });
+        } else if (errorMessage.includes('not-found') || errorMessage.includes('not found')) {
+          // Document not found is still a connection success!
+          setDbStatus({ ok: true, message: 'Fox Cloud: Ativa (Config)' });
         } else {
-          setDbStatus({ ok: true, message: 'Fox Cloud: Ativa' }); // If it's a permission error, it's still "active"
+          // If it's a permission error (e.g. settings not seeded yet) or something else, consider it OK
+          setDbStatus({ ok: true, message: 'Fox Cloud: Ativa' }); 
         }
       }
     };
     testConnection();
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userData = await storage.getUser(firebaseUser.uid);
-        if (userData) {
-          setUser(userData);
-          localStorage.setItem('fox_managers_cached_user', JSON.stringify(userData));
-        } else {
-          // Profile might not exist yet if just signed up
-          const cached = storage.getCurrentUser();
-          if (cached && cached.id === firebaseUser.uid) {
-            setUser(cached);
-          }
-        }
+    let unsubUser: (() => void) | null = null;
 
-        // Seed initial generator data if empty (for new apps)
-        try {
-          const currentGenLists = await storage.getGenLists();
-          if (currentGenLists.length === 0) {
-            await storage.setGenLists([
-              {
-                id: 'football-manager',
-                game: 'Football Manager',
-                teams: [
-                  'Schalke 04|Alemanha|Médio|Rebuild',
-                  'Sunderland|Inglaterra|Médio|Rebuild',
-                  'Paris FC|França|Pequeno|Desafio Extremo',
-                  'Deportivo La Coruña|Espanha|Médio|Rebuild',
-                  'Como|Itália|Médio|Normal',
-                  'Estrela da Amadora|Portugal|Pequeno|Sem Dinheiro',
-                  'Wimbledon|Inglaterra|Pequeno|Base/Youth',
-                  'Notts County|Inglaterra|Pequeno|Normal',
-                  'Santos|Brasil|Grande|Rebuild',
-                  'Palermo|Itália|Médio|Rebuild'
-                ],
-                objectives: ['Vencer a Champions League', 'Ter 70% do time da base', 'Ser o time com mais gols na liga', 'Vencer a Copa Nacional', 'Subir de divisão no 1º ano'],
-                rules: ['Apenas contratações sub-23', 'Apenas jogadores nacionais', 'Vender qualquer jogador com oferta do dobro do valor', 'Não usar empréstimos', 'Limite salarial de 1M/mês'],
-                styles: ['Gegenpress', 'Tiki-Taka', 'Catenaccio', 'Contra-Ataque Direto', 'Posicional']
-              },
-              {
-                id: 'ea-sports-fc',
-                game: 'EA Sports FC (FIFA)',
-                teams: [
-                  'Wrexhan|Inglaterra|Pequeno|Normal',
-                  'Malaga|Espanha|Médio|Rebuild',
-                  'Bordeaux|França|Médio|Rebuild',
-                  'Monza|Itália|Pequeno|Normal',
-                  'Moreirense|Portugal|Pequeno|Normal',
-                  'Inter Miami|Outros|Grande|Normal',
-                  'Al-Nassr|Outros|Grande|Normal',
-                  'Union Berlin|Alemanha|Médio|Normal',
-                  'Luton Town|Inglaterra|Pequeno|Desafio Extremo',
-                  'RB Leipzig|Alemanha|Grande|Base/Youth'
-                ],
-                objectives: ['Ganhar a Tríplice Coroa', 'Desenvolver um craque 90+', 'Ter o estádio sempre lotado', 'Vencer o rival local', 'Não sofrer gols em 15 jogos'],
-                rules: ['Nenhuma contratação na 1ª janela', 'Apenas jogadores livres', 'Apenas trocas de jogadores', 'Máximo 3 estrangeiros', 'Apenas olheiros da base'],
-                styles: ['4-3-3 Ofensivo', '3-5-2 Murado', '4-4-2 Clássico', '4-2-3-1 Moderno', '5-3-2 Retranca']
-              },
-              {
-                id: 'world-soccer-champs',
-                game: 'World Soccer Champs',
-                teams: [
-                  'Ibiza|Espanha|Pequeno|Sem Dinheiro',
-                  'Salford City|Inglaterra|Pequeno|Normal',
-                  'Chaves|Portugal|Pequeno|Normal',
-                  'Parma|Itália|Médio|Rebuild',
-                  'St. Etienne|França|Médio|Rebuild',
-                  'Vasco da Gama|Brasil|Grande|Rebuild',
-                  'Sporting Braga|Portugal|Grande|Normal',
-                  'Darmstadt|Alemanha|Pequeno|Desafio Extremo',
-                  'Plymouth Argyle|Inglaterra|Pequeno|Normal',
-                  'Como 1907|Itália|Pequeno|Normal'
-                ],
-                objectives: ['Vencer o mundial de clubes', 'Ser campeão invicto', 'Ter o artilheiro da liga', 'Reformar o CT ao máximo', 'Ganhar 5 títulos seguidos'],
-                rules: ['Vender jogadores acima de 30 anos', 'Apenas jogadores da América do Sul', 'Não renovar contratos acima de 3 anos', 'Apenas 1 craque no time', 'Time 100% jovem'],
-                styles: ['Ataque Total', 'Defesa Sólida', 'Jogo pelas Pontas', 'Meio Campo Forte', 'Bola Parada']
-              },
-              {
-                id: 'soccer-manager-25',
-                game: 'Soccer Manager 2025',
-                teams: [
-                   'Sunderland|Inglaterra|Médio|Rebuild',
-                   'QPR|Inglaterra|Médio|Rebuild',
-                   'Middlesbrough|Inglaterra|Médio|Normal',
-                   'Hamburger SV|Alemanha|Grande|Rebuild',
-                   'Hertha Berlin|Alemanha|Médio|Rebuild',
-                   'Bari|Itália|Médio|Normal',
-                   'Levante|Espanha|Médio|Normal',
-                   'Auxerre|França|Médio|Rebuild',
-                   'Vitória de Guimarães|Portugal|Grande|Normal',
-                   'Sport Recife|Brasil|Médio|Normal'
-                ],
-                objectives: ['Alcançar status continental', 'Dobrar o valor do clube', 'Revelar 5 promessas', 'Vencer a Liga 1', 'Construir um novo estádio'],
-                rules: ['Saldo de transferências positivo', 'Salários em dia', 'Apenas jogadores da liga nacional', 'Sem contratar nomes famosos', 'Apenas base'],
-                styles: ['Tudo ou Nada', 'Park the Bus', 'Wing Play', 'Direct', 'Positional']
-              }
-            ]);
-          }
-
-          // Seed Careers (10 per game)
-          const currentCareers = await storage.getImportedCareers();
-          if (currentCareers.length === 0) {
-            const seedCareers: ImportedCareer[] = [];
-            const games = ['FIFA 23', 'FC 24', 'FC 25', 'Football Manager'];
-            
-            games.forEach(game => {
-              for (let i = 1; i <= 10; i++) {
-                seedCareers.push({
-                  id: `seed-${game}-${i}`,
-                  name: `Desafio ${i} - ${game}`,
-                  game: game,
-                  team: i === 1 ? 'Santos' : i === 2 ? 'Real Madrid' : i === 3 ? 'Wrexham' : `Time ${i}`,
-                  difficulty: i % 3 === 0 ? 'Lendário' : i % 2 === 0 ? 'Difícil' : 'Médio',
-                  category: i % 2 === 0 ? 'Rebuild' : 'Longa Duração',
-                  country: 'Vários',
-                  league: 'Várias',
-                  objective: `Objetivo principal para o desafio ${i} no ${game}.`,
-                  rules: 'Sem gastar mais de 50M, Usar base, Vencer liga em 3 anos',
-                  style: 'Varia',
-                  description: `Uma jornada épica começando com o pé direito no ${game}.`,
-                  type: i % 2 === 0 ? 'Official' : 'Special',
-                  status: 'published',
-                  published: true,
-                  featured: i === 1,
-                  authorId: 'system',
-                  createdAt: Date.now()
-                });
-              }
-            });
-            await storage.setImportedCareers(seedCareers);
-          }
-        } catch (e) {
-          console.warn("Seeding failed", e);
-        }
-      } else {
-        setUser(null);
-        localStorage.removeItem('fox_managers_cached_user');
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Cleanup previous user listener if it exists
+      if (unsubUser) {
+        unsubUser();
+        unsubUser = null;
       }
-      setLoading(false);
+
+      try {
+        if (firebaseUser) {
+          // Listen to real-time updates for User
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          unsubUser = onSnapshot(userDocRef, (docSnap) => {
+             if (docSnap.exists()) {
+               const userData = docSnap.data() as User;
+               setUser(userData);
+               localStorage.setItem('fox_managers_cached_user', JSON.stringify(userData));
+             }
+          });
+
+          // Seed initial generator data if empty (for new apps)
+          try {
+            const currentGenLists = await storage.getGenLists();
+            if (currentGenLists.length === 0) {
+              await storage.setGenLists(INITIAL_GEN_LISTS);
+            }
+
+            // Seed Careers (10 per game)
+            const currentCareers = await storage.getImportedCareers();
+            if (currentCareers.length === 0) {
+              const seedCareers: ImportedCareer[] = [];
+              const games = ['Football Manager', 'EA Sports FC (FIFA)', 'World Soccer Champs', 'PES 2021', 'Soccer Manager 2025'];
+              
+              games.forEach(game => {
+                for (let i = 1; i <= 10; i++) {
+                  seedCareers.push({
+                    id: `seed-${game}-${i}`,
+                    name: `Desafio ${i} - ${game}`,
+                    game: game,
+                    team: i === 1 ? 'Santos' : i === 2 ? 'Real Madrid' : i === 3 ? 'Wrexham' : `Time ${i}`,
+                    difficulty: i % 3 === 0 ? 'Lendário' : i % 2 === 0 ? 'Extremo' : 'Médio',
+                    category: i % 2 === 0 ? 'Rebuild' : 'Longa Duração',
+                    country: 'Vários',
+                    league: 'Várias',
+                    objective: `Objetivo principal para o desafio ${i} no ${game}.`,
+                    rules: 'Sem gastar mais de 50M, Usar base, Vencer liga em 3 anos',
+                    style: 'Varia',
+                    description: `Uma jornada épica começando com o pé direito no ${game}.`,
+                    type: i % 2 === 0 ? 'Official' : 'Special',
+                    status: 'published',
+                    published: true,
+                    featured: i === 1,
+                    authorId: 'system',
+                    createdAt: Date.now()
+                  });
+                }
+              });
+              await storage.setImportedCareers(seedCareers);
+            }
+          } catch (e) {
+            console.warn("Seeding failed", e);
+          }
+        } else {
+          setUser(null);
+          localStorage.removeItem('fox_managers_cached_user');
+        }
+      } catch (error) {
+        console.error("Auth initialization error:", error);
+      } finally {
+        setLoading(false);
+        clearTimeout(safetyTimeout);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubUser) unsubUser();
+      clearTimeout(safetyTimeout);
+    };
   }, []);
 
   if (loading) {
@@ -218,7 +178,7 @@ export default function App() {
   }
 
   const renderContent = () => {
-    if (isLogsView) return <LogsView onBack={() => setIsLogsView(false)} />;
+    if (isLogsView) return <LogsView user={user} onBack={() => setIsLogsView(false)} />;
     if (isAdminView && user && user.role !== UserRole.USER) {
       return <AdminDashboard user={user} onBack={() => setIsAdminView(false)} />;
     }
@@ -239,6 +199,10 @@ export default function App() {
         return <SavesView />;
       case 'careers':
         return <CareersDiscoveryView />;
+      case 'halloffame':
+        return <HallOfFameView />;
+      case 'events':
+        return <WeeklyEventsView />;
       case 'library':
         return <LibraryView />;
       case 'profile':
@@ -272,21 +236,32 @@ export default function App() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#9D4EDD]/5 blur-[120px] rounded-full"></div>
       </div>
 
-      <header className="px-8 py-10 flex justify-between items-center relative z-10">
+      <header className="px-6 py-6 sm:px-8 sm:py-10 flex justify-between items-center relative z-10">
         <div className="flex items-center gap-3 group cursor-pointer" onClick={() => setActiveTab('home')}>
           <motion.div 
             whileHover={{ rotate: 180 }}
-            className="w-10 h-10 bg-gradient-to-br from-[#7B2CBF] to-[#5A189A] rounded-2xl flex items-center justify-center shadow-lg shadow-[#7B2CBF33] border border-white/10"
+            className="w-10 h-10 bg-gradient-to-br from-[#7B2CBF] to-[#5A189A] rounded-xl sm:rounded-2xl flex items-center justify-center shadow-lg shadow-[#7B2CBF33] border border-white/10"
           >
             <Zap size={22} fill="white" className="text-white" />
           </motion.div>
           <div>
-            <h1 className="text-lg font-black tracking-widest uppercase italic leading-none">Fox Managers</h1>
-            <p className="text-[10px] font-bold text-[#A0A0A0] uppercase tracking-[0.3em] mt-1">Elite Edition</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-black tracking-widest uppercase italic leading-none">Fox Managers</h1>
+            </div>
+            <p className="text-[8px] sm:text-[10px] font-bold text-[#A0A0A0] uppercase tracking-[0.3em] mt-1">Elite Edition</p>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
+          <motion.button 
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => { setIsLogsView(!isLogsView); setIsAdminView(false); }}
+            className={`w-12 h-12 rounded-[20px] flex items-center justify-center transition-all border ${isLogsView ? 'bg-[#7B2CBF] border-[#7B2CBF] text-white shadow-lg shadow-[#7B2CBF44]' : 'bg-[#1A1A1A] border-[#2D2D2D] text-[#A0A0A0] hover:text-white'}`}
+          >
+            <History size={20} />
+          </motion.button>
+
           {user && user.role !== UserRole.USER && (
             <motion.button 
               whileTap={{ scale: 0.9 }}
@@ -299,7 +274,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto relative z-10">
+      <main className="max-w-md mx-auto relative flex-1 overflow-y-auto no-scrollbar pt-2">
         <AnimatePresence mode="wait">
           <motion.div
             key={isLogsView ? 'logs' : (isAdminView ? 'admin' : activeTab)}
@@ -307,7 +282,7 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98 }}
             transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-            className="px-6"
+            className="px-4 pb-32 sm:px-6"
           >
             {renderContent()}
           </motion.div>
@@ -318,8 +293,8 @@ export default function App() {
 
       {/* Navigation Bar - Revamped for better UX */}
       {!isAdminView && !isLogsView && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50">
-          <nav className="bg-[#1A1A1A]/80 backdrop-blur-2xl border border-white/10 p-2 rounded-[32px] flex justify-between items-center shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[94%] max-w-sm z-50">
+          <nav className="bg-[#1A1A1A]/90 backdrop-blur-3xl border border-white/10 p-1 rounded-[28px] sm:rounded-[32px] flex justify-around items-center shadow-[0_25px_60px_rgba(0,0,0,0.6)]">
             <NavItem 
               active={activeTab === 'home'} 
               icon={<Home size={20} />} 
@@ -328,15 +303,21 @@ export default function App() {
             />
             <NavItem 
               active={activeTab === 'generator'} 
-              icon={<Zap size={20} />} 
-              label="Gerar" 
+              icon={<Wand2 size={20} />} 
+              label="Gerador" 
               onClick={() => setActiveTab('generator')} 
             />
             <NavItem 
-              active={activeTab === 'library'} 
-              icon={<Book size={20} />} 
-              label="Ideias" 
-              onClick={() => setActiveTab('library')} 
+              active={activeTab === 'events'} 
+              icon={<Zap size={20} />} 
+              label="Eventos" 
+              onClick={() => setActiveTab('events')} 
+            />
+            <NavItem 
+              active={activeTab === 'halloffame'} 
+              icon={<Trophy size={20} />} 
+              label="Lendas" 
+              onClick={() => setActiveTab('halloffame')} 
             />
             <NavItem 
               active={activeTab === 'saves'} 
@@ -344,7 +325,7 @@ export default function App() {
               label="Saves" 
               onClick={() => setActiveTab('saves')} 
             />
-            <div className="w-10 h-10 rounded-2xl overflow-hidden ml-1 border border-white/10 group cursor-pointer active:scale-90 transition-transform" onClick={() => setActiveTab('profile')}>
+            <div className="w-10 h-10 rounded-2xl overflow-hidden mr-1 border border-white/10 group cursor-pointer active:scale-90 transition-transform" onClick={() => setActiveTab('profile')}>
               <img 
                 src={user?.photoUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.name}`} 
                 className={`w-full h-full object-cover transition-opacity ${activeTab === 'profile' ? 'opacity-100 ring-2 ring-[#7B2CBF]' : 'opacity-40 group-hover:opacity-100'}`} 
@@ -362,7 +343,7 @@ function NavItem({ active, icon, label, onClick }: { active: boolean, icon: Reac
   return (
     <button 
       onClick={onClick}
-      className={`relative py-3 px-4 flex flex-col items-center gap-1.5 transition-all group ${active ? 'text-[#7B2CBF]' : 'text-[#A0A0A0] hover:text-white'}`}
+      className={`relative py-3 px-2 flex flex-col items-center gap-1 transition-all group ${active ? 'text-[#7B2CBF]' : 'text-[#A0A0A0] hover:text-white'}`}
     >
       <div className={`transition-transform duration-300 ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
         {icon}

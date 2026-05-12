@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Zap, Mail, Lock, LogIn, Shield, User as UserIcon, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Zap, Mail, Lock, LogIn, Shield, User as UserIcon, Eye, EyeOff, ArrowLeft, AlertCircle, Sparkles } from 'lucide-react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
@@ -90,6 +90,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
         createdAt: Date.now(),
         favoriteGames: [],
         level: 999,
+        xp: 999999,
         badges: ['FUNDADOR', 'FOX MASTER', 'ADMIN'],
         favorites: { challenges: [], ideas: [], teams: [], careers: [], tips: [] },
       };
@@ -120,6 +121,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
           createdAt: Date.now(),
           favoriteGames: [],
           level: 1,
+          xp: 0,
           badges: [],
           favorites: { challenges: [], ideas: [], teams: [], careers: [], tips: [] },
         };
@@ -173,6 +175,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
         createdAt: Date.now(),
         favoriteGames: [],
         level: 1,
+        xp: 0,
         badges: [],
         favorites: { challenges: [], ideas: [], teams: [], careers: [], tips: [] },
       };
@@ -241,6 +244,9 @@ export default function LoginView({ onLogin }: LoginViewProps) {
     setError('Iniciando Google Auth...');
     try {
       const provider = new GoogleAuthProvider();
+      // Configure for iframe constraints
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       
@@ -252,11 +258,12 @@ export default function LoginView({ onLogin }: LoginViewProps) {
         const newUser: User = {
           id: firebaseUser.uid,
           email: firebaseUser.email!,
-          name: firebaseUser.displayName || 'Manager',
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Manager',
           role: UserRole.USER,
           createdAt: Date.now(),
           favoriteGames: [],
           level: 1,
+          xp: 0,
           badges: [],
           favorites: { challenges: [], ideas: [], teams: [], careers: [], tips: [] },
         };
@@ -266,42 +273,67 @@ export default function LoginView({ onLogin }: LoginViewProps) {
       }
     } catch (err: any) {
       sounds.error();
+      console.error('Google Auth Error:', err);
+      
       if (err.code === 'auth/operation-not-allowed') {
         setError('O login com Google não está ativado no Firebase Console.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('Pop-up bloqueado! Clique no cadeado na barra de endereços e permita pop-ups para logar.');
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setError('Login cancelado. Você fechou a janela do Google antes de terminar.');
+      } else if (err.code === 'auth/unauthorized-domain' || err.message.includes('cross-origin')) {
+        setError('ERRO DE DOMÍNIO: Clique no ícone de "Nova Aba" no topo direito para abrir o app fora do quadro e logar com Google.');
       } else {
-        setError(err.message);
+        setError(`Erro: ${err.message || 'Falha ao conectar'}. DICA: Abra o app em uma nova aba se estiver no celular.`);
       }
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0F0F0F] flex items-center justify-center p-6 bg-[dashed-grid]">
+    <div className="min-h-screen bg-[#0F0F0F] flex items-center justify-center p-6 relative overflow-hidden">
+      {/* Tactical Background Elements */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03] select-none">
+        <svg width="100%" height="100%">
+          <pattern id="login-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill="currentColor" />
+          </pattern>
+          <rect width="100%" height="100%" fill="url(#login-grid)" />
+        </svg>
+      </div>
+      <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-[#7B2CBF]/5 blur-[120px] rounded-full"></div>
+      <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-[#5A189A]/5 blur-[120px] rounded-full"></div>
+
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-sm space-y-8"
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+        className="w-full max-w-sm space-y-8 relative z-10"
       >
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 bg-[#7B2CBF] rounded-2xl flex items-center justify-center mx-auto shadow-2xl shadow-[#7B2CBF44]">
-            <Zap size={32} fill="white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-black uppercase italic tracking-tighter">{t('welcome')}</h1>
-            <p className="text-[10px] text-[#A0A0A0] font-black uppercase tracking-[0.3em]">{t('subtitle')}</p>
+        <div className="text-center space-y-6">
+          <motion.div 
+            whileHover={{ rotate: 180, scale: 1.1 }}
+            transition={{ duration: 0.5 }}
+            className="w-20 h-20 bg-gradient-to-br from-[#7B2CBF] to-[#5A189A] rounded-[24px] flex items-center justify-center mx-auto shadow-[0_20px_50px_rgba(123,44,191,0.4)] border border-white/20"
+          >
+            <Zap size={40} fill="white" className="text-white" />
+          </motion.div>
+          <div className="space-y-1">
+            <h1 className="text-3xl font-black uppercase italic tracking-tighter text-white">Fox Managers</h1>
+            <p className="text-[10px] text-[#7B2CBF] font-black uppercase tracking-[0.5em]">{t('subtitle')}</p>
           </div>
         </div>
 
-        <div className="bg-[#1A1A1A] border border-[#2D2D2D] p-8 rounded-[40px] shadow-2xl space-y-6">
+        <div className="bg-[#1A1A1A]/80 backdrop-blur-3xl border border-white/5 p-8 rounded-[40px] shadow-[0_30px_100px_rgba(0,0,0,0.8)] space-y-8">
           <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5">
             <button 
               onClick={() => switchMode(false)}
-              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${(!isSignup && !isResetPassword) ? 'bg-[#7B2CBF] text-white shadow-lg' : 'text-[#A0A0A0]'}`}
+              className={`flex-1 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${(!isSignup && !isResetPassword) ? 'bg-[#7B2CBF] text-white shadow-[0_10px_20px_rgba(123,44,191,0.3)]' : 'text-[#A0A0A0] hover:text-white'}`}
             >
               {t('login')}
             </button>
             <button 
               onClick={() => switchMode(true)}
-              className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isSignup ? 'bg-[#7B2CBF] text-white shadow-lg' : 'text-[#A0A0A0]'}`}
+              className={`flex-1 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isSignup ? 'bg-[#7B2CBF] text-white shadow-[0_10px_20px_rgba(123,44,191,0.3)]' : 'text-[#A0A0A0] hover:text-white'}`}
             >
               {t('signup')}
             </button>
@@ -327,10 +359,10 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full bg-black border border-[#2D2D2D] rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] outline-none transition-all group-hover:border-[#3D3D3D]"
+                      className="w-full bg-black/60 border border-white/5 rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] focus:ring-2 focus:ring-[#7B2CBF]/30 outline-none transition-all group-hover:border-white/10"
                       required
                     />
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-hover:text-[#666] transition-colors"><Lock size={16}/></div>
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-focus-within:text-[#7B2CBF] transition-colors"><Lock size={16}/></div>
                     <button 
                       type="button"
                       onClick={() => { sounds.click(); setShowPassword(!showPassword); }}
@@ -346,10 +378,10 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                       value={name}
                       onChange={e => setName(e.target.value)}
                       placeholder="Ex: Manager_Elite"
-                      className="w-full bg-black border border-[#2D2D2D] rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] outline-none transition-all group-hover:border-[#3D3D3D]"
+                      className="w-full bg-black/60 border border-white/5 rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] focus:ring-2 focus:ring-[#7B2CBF]/30 outline-none transition-all group-hover:border-white/10"
                       required
                     />
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-hover:text-[#666] transition-colors"><UserIcon size={16}/></div>
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-focus-within:text-[#7B2CBF] transition-colors"><UserIcon size={16}/></div>
                   </div>
                 )}
               </div>
@@ -362,14 +394,47 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                   <span className="text-[8px] font-black uppercase text-[#7B2CBF] animate-pulse">Email: {email}</span>
                 </div>
                 
-                <div className="bg-black/20 border border-white/5 p-4 rounded-2xl mb-4 text-center space-y-2">
-                  <div className="w-10 h-10 bg-[#7B2CBF]/10 text-[#7B2CBF] rounded-full flex items-center justify-center mx-auto mb-2">
-                    <Mail size={20} />
+                <div className="bg-black/40 border border-white/5 p-6 rounded-[32px] mb-4 text-center space-y-4">
+                  <div className="w-12 h-12 bg-[#7B2CBF]/20 text-[#7B2CBF] rounded-2xl flex items-center justify-center mx-auto mb-2 shadow-inner">
+                    <Mail size={24} />
                   </div>
-                  <p className="text-[10px] text-white font-black uppercase">Clique no link que enviamos!</p>
-                  <p className="text-[8px] text-[#A0A0A0] leading-relaxed">
-                    Verifique também a aba <b>Social</b>, <b>Promoções</b> e <b>SPAM</b>.
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-white font-black uppercase tracking-wider">Verifique sua Caixa de Entrada</p>
+                    <p className="text-[9px] text-[#A0A0A0] leading-relaxed">
+                      O e-mail foi enviado para <b>{email}</b>. Às vezes o Gmail move para outras pastas:
+                    </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-3 gap-2 py-2">
+                    <div className="p-2 bg-white/5 rounded-xl border border-white/5">
+                      <p className="text-[7px] font-black text-[#A0A0A0] uppercase mb-1">Promoções</p>
+                      <Sparkles size={12} className="mx-auto text-blue-400" />
+                    </div>
+                    <div className="p-2 bg-white/5 rounded-xl border border-white/5">
+                      <p className="text-[7px] font-black text-[#A0A0A0] uppercase mb-1">Social</p>
+                      <UserIcon size={12} className="mx-auto text-green-400" />
+                    </div>
+                    <div className="p-2 bg-red-500/10 rounded-xl border border-red-500/20">
+                      <p className="text-[7px] font-black text-red-500 uppercase mb-1">Spam</p>
+                      <AlertCircle size={12} className="mx-auto text-red-500" />
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-white/5">
+                    {resendTimer > 0 ? (
+                      <p className="text-[8px] font-bold text-[#444] uppercase tracking-widest">
+                        Aguarde {resendTimer}s para reenviar
+                      </p>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={handleResetPassword}
+                        className="text-[9px] font-black uppercase text-[#7B2CBF] hover:text-white transition-colors"
+                      >
+                        Não recebeu? Reenviar E-mail
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -383,10 +448,10 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder="manager@fox.com"
-                    className="w-full bg-black border border-[#2D2D2D] rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] outline-none transition-all group-hover:border-[#3D3D3D]"
+                    className="w-full bg-black/60 border border-white/5 rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] focus:ring-2 focus:ring-[#7B2CBF]/30 outline-none transition-all group-hover:border-white/10"
                     required
                   />
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-hover:text-[#666] transition-colors"><Mail size={16}/></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-focus-within:text-[#7B2CBF] transition-colors"><Mail size={16}/></div>
                 </div>
               </div>
             )}
@@ -399,7 +464,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     <button 
                       type="button"
                       onClick={() => { sounds.click(); setIsResetPassword(true); setResetStep('request'); setError(''); }}
-                      className="text-[8px] font-black uppercase text-[#7B2CBF] hover:underline"
+                      className="text-[8px] font-black uppercase text-[#7B2CBF] hover:text-[#9D4EDD] transition-colors"
                     >
                       {t('forgot_password')}
                     </button>
@@ -411,10 +476,10 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-black border border-[#2D2D2D] rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] outline-none transition-all group-hover:border-[#3D3D3D]"
+                    className="w-full bg-black/60 border border-white/5 rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] focus:ring-2 focus:ring-[#7B2CBF]/30 outline-none transition-all group-hover:border-white/10"
                     required
                   />
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-hover:text-[#666] transition-colors"><Lock size={16}/></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-focus-within:text-[#7B2CBF] transition-colors"><Lock size={16}/></div>
                   <button 
                     type="button"
                     onClick={() => { sounds.click(); setShowPassword(!showPassword); }}
@@ -435,20 +500,30 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-black border border-[#2D2D2D] rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] outline-none transition-all group-hover:border-[#3D3D3D]"
+                    className="w-full bg-black/60 border border-white/5 rounded-2xl px-12 py-4 text-xs text-white focus:border-[#7B2CBF] focus:ring-2 focus:ring-[#7B2CBF]/30 outline-none transition-all group-hover:border-white/10"
                     required
                   />
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-hover:text-[#666] transition-colors"><Shield size={16}/></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#444] group-focus-within:text-[#7B2CBF] transition-colors"><Shield size={16}/></div>
                 </div>
               </div>
             )}
 
-            {error && <p className={`text-[9px] font-black uppercase tracking-widest text-center ${error.includes('sucesso') || error.includes('Redirecionando') || error.includes('enviado') ? 'text-green-500' : 'text-red-500'}`}>{error}</p>}
+            {error && (
+              <motion.p 
+                initial={{ opacity: 0, y: -5 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`text-[9px] font-black uppercase tracking-widest text-center ${error.includes('sucesso') || error.includes('Redirecionando') || error.includes('enviado') ? 'text-green-500' : 'text-red-500'}`}
+              >
+                {error}
+              </motion.p>
+            )}
 
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               type="submit"
               disabled={loading}
-              className="w-full bg-[#7B2CBF] text-white py-4 rounded-2xl font-black uppercase tracking-[0.2em] shadow-xl shadow-[#7B2CBF33] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full bg-[#7B2CBF] text-white py-4.5 rounded-[22px] font-black uppercase tracking-[0.2em] shadow-[0_15px_30px_rgba(123,44,191,0.4)] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -460,7 +535,7 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     : (isSignup ? t('signup_button') : t('login_button'))}
                 </>
               )}
-            </button>
+            </motion.button>
 
             {!isResetPassword && (
               <>
@@ -473,10 +548,12 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                   </div>
                 </div>
 
-                <button 
+                <motion.button 
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   type="button"
                   onClick={handleGoogleLogin}
-                  className="w-full bg-white text-black py-4 rounded-2xl font-black uppercase tracking-[0.1em] shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3"
+                  className="w-full bg-white text-black py-4.5 rounded-[22px] font-black uppercase tracking-[0.1em] shadow-[0_15px_40px_rgba(255,255,255,0.1)] transition-all flex items-center justify-center gap-3"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path
@@ -497,12 +574,13 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                     />
                   </svg>
                   Google
-                </button>
+                </motion.button>
               </>
             )}
 
             {isResetPassword && (
-              <button 
+              <motion.button 
+                whileHover={{ x: -2 }}
                 type="button"
                 onClick={() => { 
                   sounds.click();
@@ -514,17 +592,17 @@ export default function LoginView({ onLogin }: LoginViewProps) {
                   }
                   setError(''); 
                 }}
-                className="w-full text-[9px] font-black uppercase text-[#444] tracking-widest hover:text-white transition-colors py-2 flex items-center justify-center gap-2"
+                className="w-full text-[9px] font-black uppercase text-[#666] tracking-widest hover:text-white transition-colors py-2 flex items-center justify-center gap-2"
               >
                 <ArrowLeft size={10} />
                 {resetStep === 'request' ? t('back_to_login') : 'Voltar Passo'}
-              </button>
+              </motion.button>
             )}
           </form>
         </div>
 
-        <div className="text-center opacity-20 hover:opacity-50 transition-opacity">
-           <p className="text-[10px] font-black uppercase tracking-[0.4em]">Fox Managers v3.0 Production</p>
+        <div className="text-center opacity-30 hover:opacity-60 transition-opacity">
+           <p className="text-[10px] font-black uppercase tracking-[0.5em] text-white">V1.5 beta (Atual) Fox Managers</p>
         </div>
       </motion.div>
     </div>

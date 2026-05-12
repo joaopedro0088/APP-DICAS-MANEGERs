@@ -39,8 +39,8 @@
       },
       "required": ["id", "userId", "name", "game", "createdAt", "updatedAt"]
     },
-    "AppLog": {
-      "title": "AppLog",
+    "SystemUpdate": {
+      "title": "SystemUpdate",
       "description": "Application update logs",
       "type": "object",
       "properties": {
@@ -52,6 +52,53 @@
         "description": { "type": "string" }
       },
       "required": ["id", "title", "version", "date", "type", "description"]
+    },
+    "AppLog": {
+      "title": "AppLog",
+      "description": "System audit and error logs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user": { "type": "string" },
+        "text": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "admin", "error"] },
+        "timestamp": { "type": "number" },
+        "details": { "type": "object" }
+      },
+      "required": ["id", "user", "text", "type", "timestamp"]
+    },
+    "WeeklyEvent": {
+      "title": "WeeklyEvent",
+      "description": "Weekly community events and challenges",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "startDate": { "type": "number" },
+        "endDate": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["challenge", "community", "news"] }
+      },
+      "required": ["id", "title", "description", "startDate", "endDate", "isActive", "type"]
+    },
+    "HallOfFameEntry": {
+      "title": "HallOfFameEntry",
+      "description": "Legendary save records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "saveId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "team": { "type": "string" },
+        "titles": { "type": "number" },
+        "seasons": { "type": "number" },
+        "bestPlayer": { "type": "string" },
+        "reason": { "type": "string" },
+        "date": { "type": "number" }
+      },
+      "required": ["id", "saveId", "userId", "userName", "team", "titles", "seasons", "bestPlayer", "reason", "date"]
     },
     "GeneratorList": {
       "title": "GeneratorList",
@@ -95,6 +142,22 @@
         "dailyGenLimit": { "type": "number" }
       },
       "required": ["generatorActive", "uploadsAllowed", "logsPublic", "reportsEnabled", "dailySaveLimit", "dailyGenLimit"]
+    },
+    "PromoCode": {
+      "title": "PromoCode",
+      "description": "Redeemable promotion codes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["badge", "role", "level", "status"] },
+        "value": { "type": "string" },
+        "uses": { "type": "number" },
+        "maxUses": { "type": "number" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "expiresAt": { "type": "number" }
+      },
+      "required": ["id", "type", "value", "uses", "maxUses", "createdBy", "createdAt"]
     }
   },
   "firestore": {
@@ -108,7 +171,23 @@
     },
     "logs/{logId}": {
       "schema": "AppLog",
-      "description": "Application update logs"
+      "description": "System audit and error logs"
+    },
+    "system_updates/{updateId}": {
+      "schema": "SystemUpdate",
+      "description": "Application version notes"
+    },
+    "weekly_events/{eventId}": {
+      "schema": "WeeklyEvent",
+      "description": "Active community events"
+    },
+    "hall_of_fame/{entryId}": {
+      "schema": "HallOfFameEntry",
+      "description": "Hall of fame records"
+    },
+    "codes/{codeId}": {
+      "schema": "PromoCode",
+      "description": "Promotion codes"
     },
     "generator_lists/{listId}": {
       "schema": "GeneratorList",

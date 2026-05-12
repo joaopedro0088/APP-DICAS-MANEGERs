@@ -19,7 +19,8 @@ import {
   limit as firestoreLimit
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { User, Save, AppLog, GeneratorItem, UserRole, Report, UserStats, OfficialChallenge, ImportedCareer, CommunityTip, LibraryIdea, AppSettings } from './types';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { User, Save, AppLog, GeneratorItem, UserRole, Report, UserStats, OfficialChallenge, ImportedCareer, CommunityTip, LibraryIdea, AppSettings, PromoCode, WeeklyEvent, HallOfFameEntry } from './types';
 import { LIMITS } from './constants';
 
 enum OperationType {
@@ -65,6 +66,19 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     operationType,
     path
   }
+  
+  // Log to backend audit
+  const logId = `err_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+  setDoc(doc(db, 'logs', logId), {
+    id: logId,
+    user: auth.currentUser?.email || 'Sistema',
+    text: `Falha em ${operationType} em ${path}: ${errInfo.error}`,
+    title: 'Erro de Sistema',
+    type: 'error',
+    timestamp: Date.now(),
+    details: errInfo
+  }).catch(e => console.error("Critical Failure: Could not even log the error.", e));
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
@@ -86,7 +100,7 @@ export const storage = {
       animations: true,
       economyMode: false,
       managedEras: ['Rebuild', 'Time Pequeno', 'Sem Dinheiro', 'Jovens/Promessas', 'Desafio Difícil', 'Longa Duração', 'Carreira Curta'],
-      managedGames: ['Football Manager', 'EA Sports FC (FIFA)', 'World Soccer Champs', 'Soccer Manager 2025'],
+      managedGames: ['Football Manager', 'World Soccer Champs', 'EA Sports FC (FIFA)', 'PES 2021 ps4 e pc(com mods de 2026 elenco atualizado)', 'Soccer Manager 2025', 'Fottball manager 2021 touch atualizado'],
       managedDifficulties: ['Fácil', 'Médio', 'Difícil', 'Lendário', 'Extremo']
     };
 
@@ -195,18 +209,47 @@ export const storage = {
   // LOGS
   getLogs: async (): Promise<AppLog[]> => {
     try {
-      const q = query(collection(db, 'logs'), orderBy('date', 'desc'));
+      const q = query(collection(db, 'logs'), orderBy('timestamp', 'desc'));
       const querySnapshot = await getDocs(q);
       return querySnapshot.docs.map(doc => doc.data() as AppLog);
     } catch (error) {
-      handleFirestoreError(error, OperationType.LIST, 'logs');
-      return [];
+      console.warn('Could not fetch logs by timestamp, trying date...', error);
+      try {
+        const q2 = query(collection(db, 'logs'), orderBy('date', 'desc'));
+        const querySnapshot = await getDocs(q2);
+        return querySnapshot.docs.map(doc => doc.data() as any);
+      } catch (e) {
+        return [];
+      }
+    }
+  },
+
+  addLog: async (log: Partial<AppLog>) => {
+    try {
+      const id = log.id || `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+      const fullLog: AppLog = {
+        id,
+        user: log.user || auth.currentUser?.email || 'Sistema',
+        text: log.text || 'Ação do sistema',
+        type: log.type || 'info',
+        timestamp: log.timestamp || Date.now(),
+        ...log
+      };
+      await setDoc(doc(db, 'logs', id), fullLog);
+    } catch (error) {
+      console.error('Error adding log:', error);
     }
   },
 
   setLogs: async (logs: AppLog[]) => {
+    // If empty list, we might want to clear logs (for debug/reset)
+    if (logs.length === 0) {
+      // In a real app we'd probably call a cloud function or batch delete
+      // Here just to clear local UI if it's set locally
+      return;
+    }
     for (const log of logs) {
-      await setDoc(doc(db, 'logs', log.id), log);
+      await storage.addLog(log);
     }
   },
   
@@ -368,7 +411,204 @@ export const storage = {
     }
   },
 
+  // PROMO CODES
+  getCodes: async (): Promise<PromoCode[]> => {
+    try {
+      const q = query(collection(db, 'codes'), orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => doc.data() as PromoCode);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'codes');
+      return [];
+    }
+  },
+
+  addCode: async (code: PromoCode) => {
+    try {
+      await setDoc(doc(db, 'codes', code.id), code);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `codes/${code.id}`);
+    }
+  },
+
+  deleteCode: async (codeId: string) => {
+    try {
+      await deleteDoc(doc(db, 'codes', codeId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `codes/${codeId}`);
+    }
+  },
+
+  redeemCode: async (userId: string, codeId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const docRef = doc(db, 'codes', codeId);
+      const docSnap = await getDoc(docRef);
+      
+      if (!docSnap.exists()) {
+        return { success: false, message: 'Código inválido ou inexistente' };
+      }
+
+      const codeData = docSnap.data() as PromoCode;
+      const user = await storage.getUser(userId);
+
+      if (!user) return { success: false, message: 'Usuário não encontrado' };
+      if (user.usedCodes?.includes(codeId)) {
+        return { success: false, message: 'Você já resgatou este código' };
+      }
+
+      if (codeData.uses >= codeData.maxUses) {
+        return { success: false, message: 'Este código atingiu o limite de usos' };
+      }
+
+      if (codeData.expiresAt && Date.now() > codeData.expiresAt) {
+        return { success: false, message: 'Este código expirou' };
+      }
+
+      // Apply effects
+      const updates: Partial<User> = {
+        usedCodes: [...(user.usedCodes || []), codeId]
+      };
+
+      if (codeData.type === 'badge') {
+        if (!user.badges.includes(codeData.value)) {
+          updates.badges = [...user.badges, codeData.value];
+        }
+      } else if (codeData.type === 'role') {
+        updates.role = codeData.value as UserRole;
+      } else if (codeData.type === 'level') {
+        updates.level = (user.level || 0) + parseInt(codeData.value);
+      } else if (codeData.type === 'status') {
+        // Just adding a badge as proof of status
+        if (!user.badges.includes(codeData.value)) {
+          updates.badges = [...user.badges, codeData.value];
+        }
+      }
+
+      await storage.updateUser(userId, updates);
+      await updateDoc(docRef, { uses: codeData.uses + 1 });
+
+      return { success: true, message: `Sucesso! Você ativou: ${codeData.value}` };
+    } catch (error) {
+      console.error('Redeem error:', error);
+      return { success: false, message: 'Erro ao processar o resgate' };
+    }
+  },
+
+  // WEEKLY EVENTS
+  getWeeklyEvents: async (): Promise<WeeklyEvent[]> => {
+    try {
+      const q = query(collection(db, 'weekly_events'), orderBy('startDate', 'desc'));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => doc.data() as WeeklyEvent);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'weekly_events');
+      return [];
+    }
+  },
+
+  addWeeklyEvent: async (event: WeeklyEvent) => {
+    try {
+      await setDoc(doc(db, 'weekly_events', event.id), event);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `weekly_events/${event.id}`);
+    }
+  },
+
+  deleteWeeklyEvent: async (eventId: string) => {
+    try {
+      await deleteDoc(doc(db, 'weekly_events', eventId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `weekly_events/${eventId}`);
+    }
+  },
+
+  // HALL OF FAME
+  getHallOfFame: async (): Promise<HallOfFameEntry[]> => {
+    try {
+      const q = query(collection(db, 'hall_of_fame'), orderBy('date', 'desc'));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => doc.data() as HallOfFameEntry);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'hall_of_fame');
+      return [];
+    }
+  },
+
+  addToHallOfFame: async (entry: HallOfFameEntry) => {
+    try {
+      await setDoc(doc(db, 'hall_of_fame', entry.id), entry);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `hall_of_fame/${entry.id}`);
+    }
+  },
+
+  deleteFromHallOfFame: async (entryId: string) => {
+    try {
+      await deleteDoc(doc(db, 'hall_of_fame', entryId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `hall_of_fame/${entryId}`);
+    }
+  },
+
   // AUTH
+  resetPassword: async (email: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return { success: true, message: 'E-mail de redefinição enviado com sucesso!' };
+    } catch (error: any) {
+      console.error('Reset error:', error);
+      let message = 'Erro ao enviar e-mail de redefinição.';
+      if (error.code === 'auth/user-not-found') message = 'Usuário não encontrado.';
+      if (error.code === 'auth/invalid-email') message = 'E-mail inválido.';
+      return { success: false, message };
+    }
+  },
+
+  addXP: async (userId: string, amount: number) => {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user) return;
+
+      const newXP = (user.xp || 0) + amount;
+      const newLevel = Math.floor(newXP / 1000) + 1;
+      
+      const updates: Partial<User> = { xp: newXP };
+      if (newLevel > (user.level || 1)) {
+        updates.level = newLevel;
+        await storage.addLog({
+          user: user.email,
+          text: `Subiu para o Nível ${newLevel}! 🦊🔥`,
+          type: 'info',
+          title: 'Level Up!'
+        });
+      }
+
+      await storage.updateUser(userId, updates);
+    } catch (error) {
+      console.error('XP Error:', error);
+    }
+  },
+
+  addBadge: async (userId: string, badgeName: string) => {
+    try {
+      const user = await storage.getUser(userId);
+      if (!user || user.badges.includes(badgeName)) return;
+
+      const updatedBadges = [...user.badges, badgeName];
+      await storage.updateUser(userId, { badges: updatedBadges });
+      await storage.addXP(userId, 500); // 500 XP for each new badge
+      
+      await storage.addLog({
+        user: user.email,
+        text: `Conquistou a medalha: ${badgeName}! 🏅`,
+        type: 'info',
+        title: 'Nova Conquista!'
+      });
+    } catch (error) {
+      console.error('Badge Error:', error);
+    }
+  },
+
   getCurrentUser: (): User | null => {
     // This is synchronous in the original store, but Firebase is async.
     // We'll rely on App.tsx to manage the reactive state.

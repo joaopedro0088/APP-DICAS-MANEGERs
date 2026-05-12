@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // --- GLOBAL HELPERS ---
+    // --- HELPERS ---
     function isSignedIn() { return request.auth != null; }
     function isEmailVerified() { return request.auth.token.email_verified == true; }
     function incoming() { return request.resource.data; }
@@ -10,7 +10,7 @@ service cloud.firestore {
     function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
     
     function isCEOEmail(email) {
-      return email.lower() in [
+      return email != null && email.lower() in [
         'joaopedroalvesbarbosa08@gmail.com',
         'joaopedroalvesbarbbosa08@gmail.com',
         'andreiaalvesbarbosa06@gmail.com',
@@ -18,24 +18,27 @@ service cloud.firestore {
       ];
     }
 
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
     function getUserData(uid) {
       return get(/databases/$(database)/documents/users/$(uid)).data;
     }
-    
-    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
-    
-    function currentRole() {
-      return getUserData(request.auth.uid).role;
+
+    function hasRole(uid, role) {
+      let path = /databases/$(database)/documents/users/$(uid);
+      return exists(path) && get(path).data.role == role;
     }
-    
-    function isCEO() { 
-      return isSignedIn() && (currentRole() == 'CEO' || isCEOEmail(request.auth.token.email)); 
+
+    function isCEO() {
+      return isSignedIn() && (isCEOEmail(request.auth.token.email) || hasRole(request.auth.uid, 'CEO'));
     }
-    function isADM() { 
-      return isSignedIn() && (currentRole() == 'ADM' || isCEO()); 
+
+    function isADM() {
+      return isSignedIn() && (isCEO() || hasRole(request.auth.uid, 'ADM'));
     }
-    function isMOD() { 
-      return isSignedIn() && (currentRole() == 'MOD' || isADM()); 
+
+    function isMOD() {
+      return isSignedIn() && (isADM() || hasRole(request.auth.uid, 'MOD'));
     }
 
     // --- VALIDATION BLUEPRINTS ---
@@ -45,7 +48,9 @@ service cloud.firestore {
              data.name is string && data.name.size() <= 100 &&
              data.email is string && data.email.size() <= 100 &&
              data.role in ['CEO', 'ADM', 'MOD', 'USER'] &&
-             data.createdAt is number;
+             data.createdAt is number &&
+             data.get('level', 1) is number &&
+             data.get('xp', 0) is number;
     }
     
     function isValidSave(data) {
@@ -57,11 +62,54 @@ service cloud.firestore {
              data.createdAt is number && data.updatedAt is number;
     }
 
-    function isValidLog(data) {
-      return data.title is string && data.title.size() <= 100 &&
+    function isValidAppLog(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.user is string && data.user.size() <= 100 &&
+             data.text is string && data.text.size() <= 5000 &&
+             data.type in ['info', 'admin', 'error'] &&
+             data.timestamp is number;
+    }
+
+    function isValidSystemUpdate(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() <= 100 &&
              data.version is string && data.version.size() <= 20 &&
              data.description is string && data.description.size() <= 2000 &&
+             data.date is number &&
+             data.type in ['update', 'fix', 'news'];
+    }
+
+    function isValidWeeklyEvent(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.title is string && data.title.size() <= 100 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.startDate is number &&
+             data.endDate is number &&
+             data.isActive is bool &&
+             data.type in ['challenge', 'community', 'news'];
+    }
+
+    function isValidHOF(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.saveId is string && data.saveId.size() <= 128 &&
+             data.userId is string && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.team is string && data.team.size() <= 100 &&
+             data.titles is number &&
+             data.seasons is number &&
+             data.bestPlayer is string && data.bestPlayer.size() <= 100 &&
+             data.reason is string && data.reason.size() <= 500 &&
              data.date is number;
+    }
+
+    function isValidPromoCode(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.type in ['badge', 'role', 'level', 'status'] &&
+             data.value is string && data.value.size() <= 100 &&
+             data.uses is number &&
+             data.maxUses is number &&
+             data.createdBy is string && data.createdBy.size() <= 100 &&
+             data.createdAt is number;
     }
 
     // --- RULES ---
@@ -75,11 +123,16 @@ service cloud.firestore {
       allow create: if isOwner(userId) && isValidUser(incoming()) && (
         incoming().role == 'USER' || (incoming().role == 'CEO' && isCEOEmail(incoming().email))
       );
-      allow update: if isSignedIn() && isValidId(userId) && (
-        (isOwner(userId) && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'photoUrl', 'bio', 'favoriteGames', 'favorites', 'updatedAt', 'role']) && isValidUser(incoming()) && (
-          incoming().role == existing().role || isCEOEmail(incoming().email)
+      allow update: if (
+        (isOwner(userId) && isValidUser(incoming()) && (
+          // Protect immutables
+          incoming().id == existing().id &&
+          incoming().email == existing().email &&
+          incoming().createdAt == existing().createdAt &&
+          // Role escalation protection: only CEOs can become CEOs
+          (incoming().role == existing().role || (incoming().role == 'CEO' && isCEOEmail(incoming().email)))
         )) ||
-        (isADM() && incoming().diff(existing()).affectedKeys().hasOnly(['role', 'level', 'badges', 'name', 'bio', 'photoUrl']) && isValidUser(incoming()))
+        (isADM() && isValidUser(incoming()) && incoming().id == existing().id)
       );
       allow delete: if isCEO();
     }
@@ -96,8 +149,35 @@ service cloud.firestore {
     }
 
     match /logs/{logId} {
+      allow read: if isADM();
+      allow list: if isADM();
+      allow create: if (isADM() || (isSignedIn() && incoming().type == 'error')) && isValidId(logId) && isValidAppLog(incoming());
+      allow update, delete: if isCEO();
+    }
+
+    match /system_updates/{updateId} {
       allow read: if true;
-      allow write: if isCEO() && isValidId(logId) && isValidLog(incoming());
+      allow write: if isCEO() && isValidId(updateId) && isValidSystemUpdate(incoming());
+    }
+
+    match /weekly_events/{eventId} {
+      allow read: if true;
+      allow write: if isADM() && isValidId(eventId) && isValidWeeklyEvent(incoming());
+    }
+
+    match /hall_of_fame/{entryId} {
+      allow read: if true;
+      allow write: if isADM() && isValidId(entryId) && isValidHOF(incoming());
+    }
+
+    match /codes/{codeId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isCEO() && isValidId(codeId) && isValidPromoCode(incoming());
+      allow update: if isSignedIn() && isValidId(codeId) && (
+        (isCEO() && isValidPromoCode(incoming())) ||
+        // Allow users to update "uses" when redeeming (limited to just that field)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['uses']) && incoming().uses == existing().uses + 1 && incoming().uses <= existing().maxUses)
+      );
     }
 
     match /generator_lists/{listId} {

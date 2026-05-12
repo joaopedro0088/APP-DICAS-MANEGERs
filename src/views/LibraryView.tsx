@@ -22,8 +22,8 @@ const CHALLENGES = [
 
 const CATEGORIES = [
   { id: 'rebuild', name: 'Rebuild', icon: <RotateCcw size={14} />, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-  { id: 'jovens', name: 'Jovens', icon: <Flame size={14} />, color: 'text-orange-400', bg: 'bg-orange-400/10' },
-  { id: 'financeiro', name: 'Sem Dinheiro', icon: <Target size={14} />, color: 'text-green-400', bg: 'bg-green-400/10' },
+  { id: 'base', name: 'Base', icon: <Flame size={14} />, color: 'text-orange-400', bg: 'bg-orange-400/10' },
+  { id: 'sem-dinheiro', name: 'Sem Dinheiro', icon: <Target size={14} />, color: 'text-green-400', bg: 'bg-green-400/10' },
   { id: 'hardcore', name: 'Hardcore', icon: <Zap size={14} />, color: 'text-red-400', bg: 'bg-red-400/10' },
   { id: 'longa', name: 'Longa Duração', icon: <Clock size={14} />, color: 'text-[#7B2CBF]', bg: 'bg-[#7B2CBF]/10' },
 ];
@@ -48,9 +48,13 @@ export default function LibraryView() {
 
   useEffect(() => {
     const fetchData = async () => {
-      setOfficialIdeas(await storage.getLibraryIdeas());
-      const tips = await storage.getCommunityTips();
-      setCommunityTips(tips.filter(t => t.status === 'approved' && t.publishedToCommunity));
+      try {
+        setOfficialIdeas(await storage.getLibraryIdeas());
+        const tips = await storage.getCommunityTips();
+        setCommunityTips(tips.filter(t => t.status === 'approved' && t.publishedToCommunity));
+      } catch (error) {
+        console.error("Failed to fetch library data:", error);
+      }
     };
     fetchData();
   }, []);
@@ -85,31 +89,36 @@ export default function LibraryView() {
     e.preventDefault();
     if (!user || !tipTitle) return;
 
-    const newTip: CommunityTip = {
-      id: Math.random().toString(36).substr(2, 9),
-      authorId: user.id,
-      authorName: user.name,
-      title: tipTitle,
-      category: selectedCategory, // Added category
-      content: tipContent,
-      challenges: selectedChallenges,
-      game: selectedGame,
-      team: team,
-      status: 'pending',
-      publishedToCommunity: publishToCommunity,
-      imageUrl: imagePreview || undefined,
-      createdAt: Date.now()
-    };
+    try {
+      const newTip: CommunityTip = {
+        id: Math.random().toString(36).substr(2, 9),
+        authorId: user.id,
+        authorName: user.name,
+        title: tipTitle,
+        category: selectedCategory, // Added category
+        content: tipContent,
+        challenges: selectedChallenges,
+        game: selectedGame,
+        team: team,
+        status: 'pending',
+        publishedToCommunity: publishToCommunity,
+        imageUrl: imagePreview || undefined,
+        createdAt: Date.now()
+      };
 
-    const allTips = await storage.getCommunityTips();
-    await storage.setCommunityTips([...allTips, newTip]);
-    
-    setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setShowTipForm(false);
-      resetForm();
-    }, 3000);
+      const allTips = await storage.getCommunityTips();
+      await storage.setCommunityTips([...allTips, newTip]);
+      
+      setSubmitted(true);
+      setTimeout(() => {
+        setSubmitted(false);
+        setShowTipForm(false);
+        resetForm();
+      }, 3000);
+    } catch (error) {
+      console.error("Failed to submit tip:", error);
+      alert("Erro ao enviar dica. Tente novamente.");
+    }
   };
 
   const resetForm = () => {
@@ -123,27 +132,47 @@ export default function LibraryView() {
   const acceptChallenge = async (item: any) => {
     if (!user) return;
     
-    const newSave: Save = {
-      id: Math.random().toString(36).substr(2, 9),
-      userId: user.id,
-      name: `Desafio: ${item.t}`,
-      game: item.game !== 'Oficial' ? item.game : GAMES[0],
-      team: item.team || 'A Escolher',
-      season: '2024/25',
-      tactic: '4-3-3',
-      philosophy: 'Equilibrada',
-      objective: item.d,
-      difficulty: 'Médio',
-      description: `Aceito da Biblioteca.\nAutor: ${item.author}\nDesafios: ${item.challenges.join(', ')}`,
-      images: [],
-      history: [],
-      goals: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+    try {
+       // Check for duplicate
+       const currentSaves = await storage.getSaves(user.id);
+       const isDuplicate = currentSaves.some(s => s.originId === item.id || s.name === `Desafio: ${item.t}`);
+       
+       if (isDuplicate) {
+         alert("Você já aceitou este desafio! Visualize em Meus Saves.");
+         return;
+       }
 
-    await storage.addSave(newSave);
-    alert("Desafio aceito! Visualize em Meus Saves.");
+      const newSave: Save = {
+        id: Math.random().toString(36).substr(2, 9),
+        userId: user.id,
+        name: `Desafio: ${item.t}`,
+        game: item.game !== 'Oficial' ? item.game : GAMES[0],
+        team: item.team || 'A Escolher',
+        category: item.category || 'Biblioteca',
+        selectedDuration: 5,
+        season: '2024/25',
+        tactic: '4-3-3',
+        philosophy: 'Equilibrada',
+        objective: item.d,
+        difficulty: 'Médio',
+        description: `Aceito da Biblioteca.\nAutor: ${item.author}\nDesafios: ${item.challenges.join(', ')}`,
+        originId: item.id || item.t,
+        images: [],
+        history: [],
+        goals: [],
+        status: 'active',
+        theme: 'default',
+        clubHistory: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      await storage.addSave(newSave);
+      alert("Desafio aceito! Visualize em Meus Saves.");
+    } catch (error) {
+      console.error("Failed to accept challenge:", error);
+      alert("Erro ao aceitar desafio. Tente novamente.");
+    }
   };
 
   const getFilteredItems = (items: any[]) => {
@@ -446,7 +475,7 @@ export default function LibraryView() {
               <div className="w-1 h-4 bg-[#7B2CBF] rounded-full"></div>
               <h3 className="text-xs font-black uppercase tracking-[0.2em] text-[#A0A0A0]">{section.category}</h3>
             </div>
-            <div className="grid gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               {section.items.map((item, i) => (
                 <motion.div 
                   initial={{ opacity: 0, y: 15 }}

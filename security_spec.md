@@ -1,24 +1,27 @@
-# Fox Managers Security Specification
+# Security Specification - Fox Managers
 
-## Data Invariants
-- A `Save` must belong to a `User`.
-- Only a `CEO` can publish `Logs`.
-- `Roles` can only be changed by a `CEO` or `ADM` (with restrictions).
-- `User` profiles can only be largely updated by the owner.
+## 1. Data Invariants
+- A user document must match the authentication UID.
+- Only specific emails can hold the 'CEO' role.
+- Saves must belong to the authenticated user who created them.
+- Timestamps (createdAt) are immutable once set.
+- Systems updates, Weekly Events, and HOF entries are strictly ADM/CEO writeable.
 
-## The "Dirty Dozen" Payloads
-1. User 1 trying to update User 2's role to 'CEO'.
-2. User 1 trying to delete a `Save` owned by User 2.
-3. User 1 trying to create a `Log` entry.
-4. User 1 trying to update the global `Settings`.
-5. User 1 trying to update their own `level` field.
-6. A `MOD` trying to promote someone to `CEO`.
-7. An unauthenticated user trying to read `Saves`.
-8. User 1 trying to create a `Save` for User 2 (spoofing `userId`).
-9. User 1 trying to inject a 1MB string into their `name` field.
-10. A user trying to create a `Report` with a fake `reportedBy` ID.
-11. A user trying to update a `Log` entry.
-12. A user trying to delete another user's profile.
+## 2. The "Dirty Dozen" Payloads (Red Team Test Cases)
+1. **Identity Spoofing**: Attempt to create a user profile with a different UID.
+2. **Privilege Escalation**: Attempt to set `role: 'CEO'` for a non-CEO email.
+3. **Immutability Breach**: Attempt to change `createdAt` on an existing user.
+4. **ID Poisoning**: Attempt to use a 2MB string as a `saveId`.
+5. **Orphaned Save**: Attempt to create a save with a `userId` that doesn't match the auth UID.
+6. **Cross-User Leak**: Attempt to read another user's private save.
+7. **Log Tampering**: Attempt to update or delete a system log as a non-CEO.
+8. **Admin Bypass**: Attempt to create a system update as a standard user.
+9. **Spam Report**: Attempt to create a report without being signed in.
+10. **Code Stealing**: Attempt to read all promo codes (list operation) as a non-admin.
+11. **Negative XP**: Attempt to update a user with a negative XP value.
+12. **Shadow Field Injection**: Attempt to inject an `isVerified` field into a user document.
 
-## The Test Runner
-(I'll create a simplified version of tests or just ensure the rules cover these)
+## 3. Test Runner (Conceptual)
+All the above payloads must return `PERMISSION_DENIED`.
+For example, a user with `email: 'malicious@gmail.com'` trying to `setDoc` on `/users/uid` with `role: 'CEO'` should be blocked by:
+`allow create: if isOwner(userId) && (incoming().role == 'USER' || (incoming().role == 'CEO' && isCEOEmail(incoming().email)))`

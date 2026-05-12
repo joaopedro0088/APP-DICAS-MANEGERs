@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { User, UserRole, Report, AppLog, GeneratorItem, ImportedCareer, CommunityTip, LibraryIdea, OfficialChallenge } from '../types';
+import { User, UserRole, Report, AppLog, GeneratorItem, ImportedCareer, CommunityTip, LibraryIdea, OfficialChallenge, PromoCode } from '../types';
+import { INITIAL_GEN_LISTS } from '../data/generatorData';
 import { storage } from '../store';
 import { 
   Users, AlertTriangle, FileText, Settings, Shield, 
@@ -13,7 +14,7 @@ import {
   MessageSquare, Edit3, Save, Eye, Crown, Zap, Flame, LayoutDashboard,
   ShieldCheck, Terminal, ToggleRight, History, Bell, Activity, MousePointer2,
   LogOut, Download, Upload, User as UserIcon, List, Trophy, Gamepad2,
-  RefreshCw, Target
+  RefreshCw, Target, Ticket
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CAREER_CATEGORIES, GAMES, COUNTRIES, TEAM_SIZES, GEN_TYPES, DIFFICULTIES } from '../constants';
@@ -28,7 +29,7 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passInput, setPassInput] = useState('');
   const [nameInput, setNameInput] = useState('');
-  const [activePanel, setActivePanel] = useState<'dashboard' | 'users' | 'reports' | 'tips' | 'careers' | 'library' | 'system' | 'categories'>('dashboard');
+  const [activePanel, setActivePanel] = useState<'dashboard' | 'users' | 'reports' | 'tips' | 'careers' | 'library' | 'system' | 'geral' | 'codes' | 'events' | 'halloffame' | 'logs'>('dashboard');
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +41,9 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
   const [library, setLibrary] = useState<LibraryIdea[]>([]);
   const [saves, setSaves] = useState<any[]>([]);
   const [challenges, setChallenges] = useState<OfficialChallenge[]>([]);
+  const [promoCodes, setPromoCodes] = useState<PromoCode[]>([]);
+  const [weeklyEvents, setWeeklyEvents] = useState<any[]>([]);
+  const [hallOfFame, setHallOfFame] = useState<any[]>([]);
   const [promoEmail, setPromoEmail] = useState('');
 
   const [appSettings, setAppSettings] = useState<any>(null);
@@ -79,7 +83,7 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
   const refreshData = async () => {
     setError(null);
     try {
-      const [u, r, l, g, c, t, lib, s, ch, set] = await Promise.all([
+      const [u, r, l, g, c, t, lib, s, ch, set, codes, events, hof] = await Promise.all([
         storage.getUsers(),
         storage.getReports(),
         storage.getLogs(),
@@ -89,7 +93,10 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
         storage.getLibraryIdeas(),
         storage.getSaves(),
         storage.getOfficialChallenges(),
-        storage.getAppSettings()
+        storage.getAppSettings(),
+        storage.getCodes(),
+        storage.getWeeklyEvents(),
+        storage.getHallOfFame()
       ]);
       setUsers(u);
       setReports(r);
@@ -101,6 +108,9 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
       setSaves(s);
       setChallenges(ch);
       setAppSettings(set);
+      setPromoCodes(codes);
+      setWeeklyEvents(events);
+      setHallOfFame(hof);
     } catch (e) {
       console.error("Error refreshing admin data:", e);
       setError("Não foi possível carregar os dados.");
@@ -138,9 +148,16 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
   };
 
   const handleUpdateSettings = async (newSettings: any) => {
-    const updated = { ...appSettings, ...newSettings };
-    setAppSettings(updated);
-    await storage.setAppSettings(updated);
+    try {
+      const updated = { ...appSettings, ...newSettings };
+      setAppSettings(updated);
+      await storage.setAppSettings(updated);
+      sounds.success();
+    } catch (e) {
+      console.error("Error updating settings:", e);
+      sounds.error();
+      alert("Erro ao salvar configurações.");
+    }
   };
 
   const handleAdminPromotion = async () => {
@@ -163,7 +180,7 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
     }
   };
 
-  const handleDeleteItem = async (id: string, type: 'save' | 'tip' | 'idea' | 'challenge' | 'career' | 'genlist') => {
+  const handleDeleteItem = async (id: string, type: 'save' | 'tip' | 'idea' | 'challenge' | 'career' | 'genlist' | 'event' | 'hof' | 'report') => {
     if (!confirm('Você tem certeza que deseja apagar permanentemente este item?')) return;
     
     try {
@@ -182,6 +199,9 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
         const remaining = genLists.filter(g => g.id !== id);
         await storage.setGenLists(remaining);
       }
+      else if (type === 'event') await storage.deleteWeeklyEvent(id);
+      else if (type === 'hof') await storage.deleteFromHallOfFame(id);
+      else if (type === 'report') await storage.deleteReport(id);
       refreshData();
       alert('Item removido com sucesso.');
     } catch (e) {
@@ -195,7 +215,8 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
     const isSpecialUser = normalizedName === 'joaopedroo' || normalizedName === 'admuser' || normalizedName === 'foxmanager';
     const isCeoOrAdm = user.role === UserRole.CEO || user.role === UserRole.ADM;
 
-    if ((isSpecialUser || isCeoOrAdm) && passInput === '12345678910haha@') {
+    // Se o usuário já tiver o cargo no sistema, o nome é secundário se a senha estiver correta
+    if ((isCeoOrAdm || isSpecialUser) && passInput === '12345678910haha@') {
       setIsAuthenticated(true);
       sounds.success();
     } else {
@@ -204,7 +225,7 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
     }
   };
 
-  if (!isAuthenticated && user.role === UserRole.CEO) {
+  if (!isAuthenticated && (user.role === UserRole.CEO || user.role === UserRole.ADM)) {
     return (
       <div className="min-h-[80vh] flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-[#1A1A1A] border border-[#2D2D2D] p-10 rounded-[40px] w-full max-w-sm space-y-8 text-center shadow-2xl">
@@ -383,9 +404,13 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
         <TabBtn active={activePanel === 'careers'} onClick={() => setActivePanel('careers')} icon={<Globe2 size={12}/>}>Carreiras</TabBtn>
         <TabBtn active={activePanel === 'library'} onClick={() => setActivePanel('library')} icon={<Zap size={12}/>}>Gerador</TabBtn>
         <TabBtn active={activePanel === 'tips'} onClick={() => setActivePanel('tips')} icon={<MessageSquare size={12}/>}>Moderação</TabBtn>
-        <TabBtn active={activePanel === 'categories'} onClick={() => setActivePanel('categories')} icon={<List size={12}/>}>Categorias</TabBtn>
+        <TabBtn active={activePanel === 'geral'} onClick={() => setActivePanel('geral')} icon={<Settings size={12}/>}>Geral</TabBtn>
+        <TabBtn active={activePanel === 'events'} onClick={() => setActivePanel('events')} icon={<Flame size={12}/>}>Eventos</TabBtn>
+        <TabBtn active={activePanel === 'halloffame'} onClick={() => setActivePanel('halloffame')} icon={<Trophy size={12}/>}>Lendas</TabBtn>
+        <TabBtn active={activePanel === 'codes'} onClick={() => setActivePanel('codes')} icon={<Ticket size={12}/>}>Códigos</TabBtn>
         <TabBtn active={activePanel === 'system'} onClick={() => setActivePanel('system')} icon={<Save size={12}/>}>Backup</TabBtn>
         <TabBtn active={activePanel === 'reports'} onClick={() => setActivePanel('reports')} icon={<ShieldAlert size={12}/>}>Reports</TabBtn>
+        <TabBtn active={activePanel === 'logs'} onClick={() => setActivePanel('logs')} icon={<Terminal size={12}/>}>Auditoria</TabBtn>
       </div>
 
       {/* Panel Content Rendering */}
@@ -393,12 +418,12 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
         {activePanel === 'dashboard' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
             <div className="grid grid-cols-2 gap-4 animate-fade-in">
-              <StatsOverviewCard icon={<Users size={18}/>} label="Usuários" val={users.length} desc="Total Registrados" color="text-blue-500" />
-              <StatsOverviewCard icon={<AlertTriangle size={18}/>} label="Denúncias" val={reports.filter(r => r.status === 'pendente' || r.status === 'pending').length} color="text-red-500" desc="Pendentes" alert={reports.filter(r => r.status === 'pendente' || r.status === 'pending').length > 0} />
+              <StatsOverviewCard icon={<Users size={18}/>} label="Usuários" val={users.length} desc="Total Registrados" color="text-blue-500" onClick={() => setActivePanel('users')} />
+              <StatsOverviewCard icon={<AlertTriangle size={18}/>} label="Denúncias" val={reports.filter(r => r.status === 'pendente' || r.status === 'pending').length} color="text-red-500" desc="Pendentes" alert={reports.filter(r => r.status === 'pendente' || r.status === 'pending').length > 0} onClick={() => setActivePanel('reports')} />
               <StatsOverviewCard icon={<Save size={18}/>} label="Saves" val={saves.length} desc="Exploração" color="text-green-500" />
-              <StatsOverviewCard icon={<Globe2 size={18}/>} label="Carreiras" val={careers.length} desc="Importadas" color="text-yellow-500" />
-              <StatsOverviewCard icon={<Trophy size={18}/>} label="Ideias" val={library.length} desc="Na Biblioteca" color="text-[#7B2CBF]" />
-              <StatsOverviewCard icon={<Terminal size={18}/>} label="Logs" val={logs.length} desc="Total Eventos" color="text-white/50" />
+              <StatsOverviewCard icon={<Globe2 size={18}/>} label="Carreiras" val={careers.length} desc="Importadas" color="text-yellow-500" onClick={() => setActivePanel('careers')} />
+              <StatsOverviewCard icon={<Trophy size={18}/>} label="Ideias" val={library.length} desc="Na Biblioteca" color="text-[#7B2CBF]" onClick={() => setActivePanel('library')} />
+              <StatsOverviewCard icon={<Terminal size={18}/>} label="Logs" val={logs.length} desc="Audit Logs" color="text-white/50" onClick={() => setActivePanel('logs')} />
             </div>
 
             <div className="space-y-4">
@@ -532,6 +557,14 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                           <button onClick={() => handleUpdateUserRole(u.id, u.role === UserRole.USER ? UserRole.ADM : UserRole.USER)} className="flex-1 bg-white/5 border border-white/5 text-[9px] font-black uppercase tracking-widest py-3 rounded-xl hover:bg-[#7B2CBF]/10 hover:text-[#7B2CBF] transition-all">
                              {u.role === UserRole.USER ? 'Dar ADM' : 'Remover ADM'}
                           </button>
+                          <button onClick={async () => {
+                             if(confirm(`Deseja enviar um e-mail de redefinição de senha para ${u.email}?`)) {
+                               const res = await storage.resetPassword(u.email);
+                               alert(res.message);
+                             }
+                           }} className="flex-1 bg-white/5 border border-white/5 text-[9px] font-black uppercase tracking-widest py-3 rounded-xl hover:bg-yellow-500/10 hover:text-yellow-500 transition-all">
+                             Reset Password
+                          </button>
                           <button onClick={() => handleResetLevel(u.id)} className="flex-1 bg-white/5 border border-white/5 text-[9px] font-black uppercase tracking-widest py-3 rounded-xl hover:bg-white/10 transition-all">
                              Resetar Nível
                           </button>
@@ -621,40 +654,54 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                </div>
                
                   <div className="flex gap-2">
-                     <button onClick={() => { 
-                       sounds.click();
-                       setIsAddingNew(true); 
-                       setEditingItem({ 
-                         id: '', 
-                         team: '', 
-                         objective: '', 
-                         rules: '', 
-                         style: '', 
-                         difficulty: managedDifficulties[0] || 'Médio', 
-                         game: managedGames[0] || 'Football Manager', 
-                         type: 'Official', 
-                         authorName: 'Fox Team', 
-                         status: 'approved', 
-                         _type: 'career' 
-                       }); 
-                     }} className="bg-[#7B2CBF] text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-[#7B2CBF33] active:scale-95 transition-all">
-                        <Plus size={14}/> Nova Carreira
+                     <button onClick={async () => {
+                        if(confirm('ATENÇÃO: Isso irá substituir TODAS as listas do gerador pelos dados originais do sistema. Continuar?')) {
+                           sounds.click();
+                           try {
+                              await storage.setGenLists(INITIAL_GEN_LISTS);
+                              alert('Gerador reiniciado com sucesso!');
+                              refreshData();
+                           } catch (e) {
+                              alert('Erro ao reiniciar gerador.');
+                           }
+                        }
+                     }} className="bg-red-500/10 text-red-500 py-4 px-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 border border-red-500/20 active:scale-95 transition-all">
+                        <RefreshCw size={14}/> Reiniciar
                      </button>
                      <button onClick={() => { 
                        sounds.click();
                        setIsAddingNew(true); 
                        setEditingItem({ 
-                         id: '', 
-                         title: '', 
-                         content: '', 
-                         game: managedGames[0] || 'Football Manager', 
-                         category: managedEras[0] || 'Rebuild', 
-                         status: 'approved', 
-                         publishedToCommunity: true, 
-                         _type: 'tip' 
+                          id: '', 
+                          team: '', 
+                          objective: '', 
+                          rules: '', 
+                          style: '', 
+                          difficulty: managedDifficulties[0] || 'Médio', 
+                          game: managedGames[0] || 'Football Manager', 
+                          type: 'Official', 
+                          authorName: 'Fox Team', 
+                          status: 'approved', 
+                          _type: 'career' 
                        }); 
-                     }} className="bg-white/5 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#7B2CBF]/10 border border-white/5 active:scale-95 transition-all">
-                        <MessageSquare size={14}/> Nova Dica
+                     }} className="flex-1 bg-[#7B2CBF] text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-[#7B2CBF33] active:scale-95 transition-all">
+                        <Plus size={14}/> Carreira
+                     </button>
+                     <button onClick={() => { 
+                       sounds.click();
+                       setIsAddingNew(true); 
+                       setEditingItem({ 
+                          id: '', 
+                          title: '', 
+                          content: '', 
+                          game: managedGames[0] || 'Football Manager', 
+                          category: managedEras[0] || 'Rebuild', 
+                          status: 'approved', 
+                          publishedToCommunity: true, 
+                          _type: 'tip' 
+                       }); 
+                     }} className="flex-1 bg-white/5 text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-[#7B2CBF]/10 border border-white/5 active:scale-95 transition-all">
+                        <MessageSquare size={14}/> Dica
                      </button>
                   </div>
             </div>
@@ -755,23 +802,75 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                   <GlobalListCard 
                     title="Dificuldades" 
                     items={managedDifficulties} 
-                    onAdd={() => { const n = prompt('Nova Dificuldade:'); if(n) setManagedDifficulties([...managedDifficulties, n]); }}
-                    onRemove={(idx: number) => setManagedDifficulties(managedDifficulties.filter((_, i) => i !== idx))}
-                    onEdit={(idx: number) => { const n = prompt('Renomear para:', managedDifficulties[idx]); if(n) { const updated = [...managedDifficulties]; updated[idx] = n; setManagedDifficulties(updated); } }}
+                    onAdd={(n: string) => {
+                      const updated = [...managedDifficulties, n];
+                      setManagedDifficulties(updated);
+                      handleUpdateSettings({ managedDifficulties: updated });
+                    }}
+                    onRemove={(idx: number) => {
+                      const updated = managedDifficulties.filter((_, i) => i !== idx);
+                      setManagedDifficulties(updated);
+                      handleUpdateSettings({ managedDifficulties: updated });
+                    }}
+                    onEdit={(idx: number, n: string) => {
+                      const updated = [...managedDifficulties];
+                      updated[idx] = n;
+                      setManagedDifficulties(updated);
+                      handleUpdateSettings({ managedDifficulties: updated });
+                    }}
                   />
                   <GlobalListCard 
                     title="Jogos Ativos" 
                     items={managedGames} 
-                    onAdd={() => { const n = prompt('Novo Jogo:'); if(n) setManagedGames([...managedGames, n]); }}
-                    onRemove={(idx: number) => setManagedGames(managedGames.filter((_, i) => i !== idx))}
-                    onEdit={(idx: number) => { const n = prompt('Renomear para:', managedGames[idx]); if(n) { const updated = [...managedGames]; updated[idx] = n; setManagedGames(updated); } }}
+                    onAdd={(n: string) => {
+                      const updated = [...managedGames, n];
+                      setManagedGames(updated);
+                      handleUpdateSettings({ managedGames: updated });
+                    }}
+                    onRemove={(idx: number) => {
+                      const updated = managedGames.filter((_, i) => i !== idx);
+                      setManagedGames(updated);
+                      handleUpdateSettings({ managedGames: updated });
+                    }}
+                    onEdit={(idx: number, n: string) => {
+                      const updated = [...managedGames];
+                      updated[idx] = n;
+                      setManagedGames(updated);
+                      handleUpdateSettings({ managedGames: updated });
+                    }}
                   />
+                  <div className="flex justify-start px-2">
+                     <button 
+                       onClick={() => {
+                          if(confirm('Aplicar novos jogos padrão do sistema?')) {
+                             setManagedGames(GAMES);
+                             handleUpdateSettings({ managedGames: GAMES });
+                          }
+                       }}
+                       className="text-[9px] font-black uppercase text-[#7B2CBF] hover:text-white transition-all px-3 py-1.5 border border-[#7B2CBF33] rounded-lg"
+                     >
+                       Sincronizar Novos Padrões
+                     </button>
+                  </div>
                   <GlobalListCard 
                     title="Eras / Categorias" 
                     items={managedEras} 
-                    onAdd={() => { const n = prompt('Nova Categoria:'); if(n) setManagedEras([...managedEras, n]); }}
-                    onRemove={(idx: number) => setManagedEras(managedEras.filter((_, i) => i !== idx))}
-                    onEdit={(idx: number) => { const n = prompt('Renomear para:', managedEras[idx]); if(n) { const updated = [...managedEras]; updated[idx] = n; setManagedEras(updated); } }}
+                    onAdd={(n: string) => {
+                      const updated = [...managedEras, n];
+                      setManagedEras(updated);
+                      handleUpdateSettings({ managedEras: updated });
+                    }}
+                    onRemove={(idx: number) => {
+                      const updated = managedEras.filter((_, i) => i !== idx);
+                      setManagedEras(updated);
+                      handleUpdateSettings({ managedEras: updated });
+                    }}
+                    onEdit={(idx: number, n: string) => {
+                      const updated = [...managedEras];
+                      updated[idx] = n;
+                      setManagedEras(updated);
+                      handleUpdateSettings({ managedEras: updated });
+                    }}
                   />
                </div>
                
@@ -799,37 +898,132 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
           </div>
         )}
 
-        {activePanel === 'categories' && (
+        {activePanel === 'geral' && (
           <div className="space-y-8 animate-fade-in">
              <div className="bg-gradient-to-br from-[#7B2CBF]/20 to-transparent p-8 rounded-[40px] border border-[#7B2CBF33] text-center space-y-2">
                 <Crown size={32} className="mx-auto text-[#7B2CBF] mb-2" />
-                <h3 className="text-xl font-black uppercase italic text-white tracking-tighter">Gestão de Curadoria</h3>
-                <p className="text-[10px] text-[#A0A0A0] font-black uppercase tracking-widest">Edite as definições globais do Fox Manager</p>
+                <h3 className="text-xl font-black uppercase italic text-white tracking-tighter">Configurações Gerais</h3>
+                <p className="text-[10px] text-[#A0A0A0] font-black uppercase tracking-widest">Controle total do ecossistema Fox Manager</p>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-[#1A1A1A] border border-[#2D2D2D] p-6 rounded-[32px] space-y-4">
+                   <h4 className="text-[10px] font-black uppercase text-[#7B2CBF] tracking-widest px-1">Limites & Acessos</h4>
+                   <div className="space-y-3">
+                      <div className="flex items-center justify-between p-4 bg-black/20 rounded-2xl">
+                         <span className="text-[9px] font-black text-[#A0A0A0] uppercase">Saves Diários / User</span>
+                         <input 
+                           type="number" 
+                           value={appSettings?.dailySaveLimit || 1} 
+                           onChange={e => handleUpdateSettings({ dailySaveLimit: parseInt(e.target.value) || 1 })}
+                           className="w-12 bg-transparent text-right text-white font-black outline-none border-b border-[#7B2CBF]"
+                         />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-black/20 rounded-2xl">
+                         <span className="text-[9px] font-black text-[#A0A0A0] uppercase">Gerações Diárias / User</span>
+                         <input 
+                           type="number" 
+                           value={appSettings?.dailyGenLimit || 10} 
+                           onChange={e => handleUpdateSettings({ dailyGenLimit: parseInt(e.target.value) || 10 })}
+                           className="w-12 bg-transparent text-right text-white font-black outline-none border-b border-[#7B2CBF]"
+                         />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-black/20 rounded-2xl">
+                         <span className="text-[9px] font-black text-[#A0A0A0] uppercase">Logs Públicos</span>
+                         <QuickToggle active={appSettings?.logsPublic} onToggle={() => handleUpdateSettings({ logsPublic: !appSettings?.logsPublic })} label="" />
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-black/20 rounded-2xl">
+                         <span className="text-[9px] font-black text-[#A0A0A0] uppercase">Reporting Ativo</span>
+                         <QuickToggle active={appSettings?.reportsEnabled} onToggle={() => handleUpdateSettings({ reportsEnabled: !appSettings?.reportsEnabled })} label="" />
+                      </div>
+                   </div>
+                </div>
+
+                <div className="bg-[#1A1A1A] border border-[#2D2D2D] p-6 rounded-[32px] space-y-4">
+                   <h4 className="text-[10px] font-black uppercase text-[#7B2CBF] tracking-widest px-1">Estado do Aplicativo</h4>
+                   <div className="space-y-3">
+                      <QuickToggle label="Gerador Fox Ativo" active={appSettings?.generatorActive} onToggle={() => handleUpdateSettings({ generatorActive: !appSettings?.generatorActive })} />
+                      <QuickToggle label="Uploads de Imagens" active={appSettings?.uploadsAllowed} onToggle={() => handleUpdateSettings({ uploadsAllowed: !appSettings?.uploadsAllowed })} />
+                      <QuickToggle label="Modo Economia Global" active={appSettings?.economyMode} onToggle={() => handleUpdateSettings({ economyMode: !appSettings?.economyMode })} />
+                   </div>
+                </div>
              </div>
 
              <div className="space-y-6 px-1">
                 <GlobalListCard 
                   title="Eras & Estilos de Carreira" 
                   items={managedEras} 
-                  onAdd={() => { const n = prompt('Nova Categoria:'); if(n) setManagedEras([...managedEras, n]); }}
-                  onRemove={(idx: number) => setManagedEras(managedEras.filter((_, i) => i !== idx))}
-                  onEdit={(idx: number) => { const n = prompt('Renomear para:', managedEras[idx]); if(n) { const updated = [...managedEras]; updated[idx] = n; setManagedEras(updated); } }}
+                  onAdd={(n: string) => {
+                    const updated = [...managedEras, n];
+                    setManagedEras(updated);
+                    handleUpdateSettings({ managedEras: updated });
+                  }}
+                  onRemove={(idx: number) => {
+                    const updated = managedEras.filter((_, i) => i !== idx);
+                    setManagedEras(updated);
+                    handleUpdateSettings({ managedEras: updated });
+                  }}
+                  onEdit={(idx: number, n: string) => {
+                    const updated = [...managedEras];
+                    updated[idx] = n;
+                    setManagedEras(updated);
+                    handleUpdateSettings({ managedEras: updated });
+                  }}
                 />
 
                 <GlobalListCard 
                   title="Jogos Ativos no App" 
                   items={managedGames} 
-                  onAdd={() => { const n = prompt('Nome do Jogo:'); if(n) setManagedGames([...managedGames, n]); }}
-                  onRemove={(idx: number) => setManagedGames(managedGames.filter((_, i) => i !== idx))}
-                  onEdit={(idx: number) => { const n = prompt('Renomear para:', managedGames[idx]); if(n) { const updated = [...managedGames]; updated[idx] = n; setManagedGames(updated); } }}
+                  onAdd={(n: string) => {
+                    const updated = [...managedGames, n];
+                    setManagedGames(updated);
+                    handleUpdateSettings({ managedGames: updated });
+                  }}
+                  onRemove={(idx: number) => {
+                    const updated = managedGames.filter((_, i) => i !== idx);
+                    setManagedGames(updated);
+                    handleUpdateSettings({ managedGames: updated });
+                  }}
+                  onEdit={(idx: number, n: string) => {
+                    const updated = [...managedGames];
+                    updated[idx] = n;
+                    setManagedGames(updated);
+                    handleUpdateSettings({ managedGames: updated });
+                  }}
                 />
+                <div className="flex justify-start px-2">
+                   <button 
+                     onClick={() => {
+                        if(confirm('Aplicar novos jogos padrão do sistema?')) {
+                           setManagedGames(GAMES);
+                           handleUpdateSettings({ managedGames: GAMES });
+                        }
+                     }}
+                     className="text-[9px] font-black uppercase text-[#7B2CBF] hover:text-white transition-all px-3 py-1.5 border border-[#7B2CBF33] rounded-lg"
+                   >
+                     Sincronizar Novos Padrões
+                   </button>
+                </div>
 
                 <GlobalListCard 
                   title="Dificuldades Oficiais" 
                   items={managedDifficulties} 
-                  onAdd={() => { const n = prompt('Nova Dificuldade:'); if(n) setManagedDifficulties([...managedDifficulties, n]); }}
-                  onRemove={(idx: number) => setManagedDifficulties(managedDifficulties.filter((_, i) => i !== idx))}
-                  onEdit={(idx: number) => { const n = prompt('Renomear para:', managedDifficulties[idx]); if(n) { const updated = [...managedDifficulties]; updated[idx] = n; setManagedDifficulties(updated); } }}
+                  onAdd={(n: string) => {
+                    const updated = [...managedDifficulties, n];
+                    setManagedDifficulties(updated);
+                    handleUpdateSettings({ managedDifficulties: updated });
+                  }}
+                  onRemove={(idx: number) => {
+                    const updated = managedDifficulties.filter((_, i) => i !== idx);
+                    setManagedDifficulties(updated);
+                    handleUpdateSettings({ managedDifficulties: updated });
+                  }}
+                  onEdit={(idx: number, n: string) => {
+                    const updated = [...managedDifficulties];
+                    updated[idx] = n;
+                    setManagedDifficulties(updated);
+                    handleUpdateSettings({ managedDifficulties: updated });
+                  }}
                 />
              </div>
 
@@ -842,12 +1036,12 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                        managedGames,
                        managedDifficulties
                      });
-                     alert('Configurações de categorias salvas com sucesso no Cloud!');
+                     alert('Todas as definições gerais foram sincronizadas!');
                    } catch (e) {
-                     alert('Erro ao salvar categorias.');
+                     alert('Erro ao salvar no Geral.');
                    }
                 }} className="w-full bg-[#7B2CBF] text-white py-6 rounded-[32px] text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#7B2CBF33] active:scale-95 transition-all flex items-center justify-center gap-3">
-                   <Save size={18} /> Salvar Definições de Categorias
+                   <Save size={18} /> Consolidar e Salvar no Geral
                 </button>
              </div>
           </div>
@@ -871,6 +1065,306 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                  </div>
               </div>
            </div>
+        )}
+
+        {activePanel === 'codes' && (
+          <div className="space-y-6 animate-fade-in pb-20">
+             <div className="bg-gradient-to-br from-[#7B2CBF]/20 via-transparent to-transparent border border-[#7B2CBF33] p-8 rounded-[40px] space-y-6 shadow-2xl relative overflow-hidden group">
+               <div className="absolute top-0 right-0 p-10 opacity-[0.1] pointer-events-none group-hover:scale-110 transition-transform duration-700">
+                  <Ticket size={120} className="text-[#7B2CBF]" />
+               </div>
+               <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                     <h3 className="text-xl font-black uppercase italic text-white tracking-tighter">Códigos Promocionais</h3>
+                     <p className="text-[10px] text-[#7B2CBF] font-black uppercase tracking-widest">Geração e Controle de Recompensas</p>
+                  </div>
+                  <button 
+                    onClick={() => { 
+                      sounds.click();
+                      setIsAddingNew(true); 
+                      setEditingItem({ 
+                        id: '', 
+                        type: 'badge',
+                        value: '',
+                        uses: 0,
+                        maxUses: 100,
+                        createdBy: user.name,
+                        createdAt: Date.now(),
+                        _type: 'code'
+                      }); 
+                    }}
+                    className="bg-[#7B2CBF] text-white p-4 rounded-2xl shadow-lg shadow-[#7B2CBF33] active:scale-95 transition-all"
+                  >
+                     <Plus size={20}/>
+                  </button>
+               </div>
+             </div>
+
+             <div className="space-y-4 px-2">
+                {promoCodes.length === 0 && (
+                  <div className="bg-[#1A1A1A] border border-[#2D2D2D] border-dashed p-12 rounded-[40px] text-center space-y-3">
+                     <Ticket size={40} className="mx-auto text-[#2D2D2D]" />
+                     <p className="text-[10px] font-black text-[#555] uppercase tracking-widest">Nenhum código ativo no sistema</p>
+                  </div>
+                )}
+                {promoCodes.map(code => (
+                  <div key={code.id} className="bg-[#1A1A1A] border border-[#2D2D2D] p-6 rounded-[36px] space-y-4 hover:border-[#7B2CBF44] transition-all relative group shadow-xl">
+                     <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                           <div className="w-12 h-12 bg-black/40 rounded-2xl flex items-center justify-center text-[#7B2CBF] border border-white/5 shadow-inner">
+                              <Ticket size={24} />
+                           </div>
+                           <div className="space-y-0.5">
+                              <h5 className="text-[16px] font-black uppercase text-white tracking-tighter italic">{code.id}</h5>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[8px] font-black uppercase text-[#7B2CBF] px-2 py-0.5 bg-[#7B2CBF]/10 rounded-lg">{code.type}</span>
+                                <span className="text-[8px] font-black uppercase text-yellow-500 px-2 py-0.5 bg-yellow-500/10 rounded-lg">{code.value}</span>
+                              </div>
+                           </div>
+                        </div>
+                        <div className="flex gap-2">
+                           <button onClick={async () => {
+                             if(confirm('Deseja excluir este código?')) {
+                               await storage.deleteCode(code.id);
+                               refreshData();
+                             }
+                           }} className="p-3 bg-red-500/5 text-red-500/30 hover:text-red-500 rounded-xl transition-all"><Trash2 size={16}/></button>
+                        </div>
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-black/20 border border-white/5 p-3 rounded-2xl">
+                           <p className="text-[7px] font-black text-[#444] uppercase mb-1">Usos / Limite</p>
+                           <p className="text-[10px] font-black text-white italic">{code.uses} / {code.maxUses}</p>
+                        </div>
+                        <div className="bg-black/20 border border-white/5 p-3 rounded-2xl">
+                           <p className="text-[7px] font-black text-[#444] uppercase mb-1">Criado por</p>
+                           <p className="text-[10px] font-black text-white italic">{code.createdBy}</p>
+                        </div>
+                     </div>
+                  </div>
+                ))}
+             </div>
+          </div>
+        )}
+
+        {activePanel === 'events' && (
+          <div className="space-y-6 animate-fade-in pb-20">
+             <div className="flex items-center justify-between px-2">
+                <div className="space-y-1">
+                   <h3 className="text-sm font-black uppercase tracking-widest text-white">Eventos Semanais</h3>
+                   <p className="text-[9px] text-[#A0A0A0] uppercase font-black tracking-widest">Controle de Desafios Globais</p>
+                </div>
+                <button 
+                  onClick={() => { 
+                    setIsAddingNew(true); 
+                    setEditingItem({ 
+                      id: '', 
+                      title: '', 
+                      description: '', 
+                      startDate: Date.now(), 
+                      endDate: Date.now() + 7 * 24 * 60 * 60 * 1000, 
+                      type: 'challenge', 
+                      reward: 'Badge de Honra', 
+                      _type: 'event' 
+                    }); 
+                  }} 
+                  className="bg-[#7B2CBF] text-white p-3 rounded-xl shadow-lg active:scale-95 transition-all"
+                >
+                  <Plus size={18}/>
+                </button>
+             </div>
+
+             <div className="space-y-4">
+                {weeklyEvents.length === 0 && (
+                  <div className="bg-[#1A1A1A] border border-[#2D2D2D] border-dashed p-10 rounded-[40px] text-center">
+                     <p className="text-[10px] font-black text-[#444] uppercase tracking-widest">Nenhum evento ativo</p>
+                  </div>
+                )}
+                {weeklyEvents.map(event => (
+                  <div key={event.id} className="bg-[#1A1A1A] border border-[#2D2D2D] p-5 rounded-[32px] flex items-center justify-between hover:bg-white/5 transition-all group">
+                     <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-[#7B2CBF]/10 rounded-xl flex items-center justify-center text-[#7B2CBF] border border-[#7B2CBF33]">
+                           <Flame size={18} />
+                        </div>
+                        <div className="space-y-0.5">
+                           <h6 className="text-[10px] font-black uppercase text-white tracking-widest">{event.title}</h6>
+                           <p className="text-[8px] text-[#A0A0A0] uppercase font-bold">{new Date(event.startDate).toLocaleDateString()} - {new Date(event.endDate).toLocaleDateString()}</p>
+                        </div>
+                     </div>
+                     <div className="flex gap-2">
+                        <button onClick={() => setEditingItem({ ...event, _type: 'event' })} className="p-2 bg-white/5 text-[#A0A0A0] hover:text-[#7B2CBF] rounded-lg transition-all"><Edit3 size={14}/></button>
+                        <button onClick={() => handleDeleteItem(event.id, 'event')} className="p-2 bg-red-500/5 text-red-500/30 hover:text-red-500 rounded-lg transition-all"><Trash2 size={14}/></button>
+                     </div>
+                  </div>
+                ))}
+             </div>
+          </div>
+        )}
+
+        {activePanel === 'halloffame' && (
+          <div className="space-y-6 animate-fade-in pb-20">
+             <div className="flex items-center justify-between px-2">
+                <div className="space-y-1">
+                   <h3 className="text-sm font-black uppercase tracking-widest text-white">Lendas do Hall of Fame</h3>
+                   <p className="text-[9px] text-[#A0A0A0] uppercase font-black tracking-widest">Imortalização de Carreiras</p>
+                </div>
+             </div>
+
+             <div className="space-y-3">
+                {hallOfFame.length === 0 && (
+                  <div className="bg-[#1A1A1A] border border-[#2D2D2D] border-dashed p-10 rounded-[40px] text-center">
+                     <p className="text-[10px] font-black text-[#444] uppercase tracking-widest">Nenhuma lenda no sistema</p>
+                  </div>
+                )}
+                {hallOfFame.map(entry => (
+                  <div key={entry.id} className="bg-[#1A1A1A] border border-[#2D2D2D] p-5 rounded-[32px] flex items-center justify-between group">
+                     <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-yellow-500/10 rounded-xl flex items-center justify-center text-yellow-500 border border-yellow-500/33">
+                           <Trophy size={18} />
+                        </div>
+                        <div className="space-y-0.5">
+                           <h6 className="text-[10px] font-black uppercase text-white tracking-widest">{entry.team} ({entry.userName})</h6>
+                           <p className="text-[8px] text-[#A0A0A0] uppercase font-bold">{entry.titles} Títulos • {entry.seasons} Temporadas</p>
+                        </div>
+                     </div>
+                     <button onClick={() => handleDeleteItem(entry.id, 'hof')} className="p-2 bg-red-500/5 text-red-500/30 hover:text-red-500 rounded-lg transition-all"><Trash2 size={14}/></button>
+                  </div>
+                ))}
+             </div>
+          </div>
+        )}
+
+        {activePanel === 'reports' && (
+          <div className="space-y-6 animate-fade-in pb-20">
+            <div className="flex items-center justify-between px-2">
+               <div className="space-y-1">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-white">Denúncias & Feedback</h3>
+                  <p className="text-[9px] text-[#A0A0A0] uppercase font-black tracking-widest">Monitoramento de Segurança</p>
+               </div>
+               <span className="text-[10px] font-black text-red-500">{reports.length} Reports</span>
+            </div>
+
+            <div className="space-y-4">
+              {reports.length === 0 ? (
+                <div className="bg-[#1A1A1A] border border-[#2D2D2D] border-dashed p-12 rounded-[40px] text-center space-y-3">
+                   <ShieldCheck size={40} className="mx-auto text-[#2D2D2D]" />
+                   <p className="text-[10px] font-black text-[#555] uppercase tracking-widest">Nenhuma denúncia no momento</p>
+                </div>
+              ) : (
+                reports.map(report => (
+                  <div key={report.id} className="bg-[#1A1A1A] border border-[#2D2D2D] p-6 rounded-[32px] space-y-4 hover:border-red-500/20 transition-all">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center text-red-500">
+                          <AlertTriangle size={20} />
+                        </div>
+                        <div>
+                          <h4 className="text-[11px] font-black text-white uppercase">{report.type}</h4>
+                          <p className="text-[8px] text-[#A0A0A0] font-black uppercase">Por: {report.authorName || 'Anônimo'}</p>
+                        </div>
+                      </div>
+                      <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${
+                        report.status === 'resolvido' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20 animate-pulse'
+                      }`}>
+                        {report.status}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-black/20 rounded-2xl border border-white/5">
+                      <p className="text-[10px] text-white/80 italic">"{report.content}"</p>
+                    </div>
+                    <div className="flex gap-2">
+                       <button 
+                         onClick={() => {
+                           if(confirm('Marcar como resolvido?')) {
+                             storage.addReport({...report, status: 'resolvido'});
+                             refreshData();
+                           }
+                         }}
+                         className="flex-1 bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-black uppercase py-3 rounded-xl hover:bg-green-500 transition-all hover:text-white"
+                       >
+                         Resolver
+                       </button>
+                       <button 
+                         onClick={() => handleDeleteItem(report.id, 'report')}
+                         className="p-3 bg-red-500/5 text-red-500/30 hover:text-red-500 border border-red-500/5 rounded-xl transition-all"
+                       >
+                         <Trash2 size={16} />
+                       </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {activePanel === 'logs' && (
+          <div className="space-y-6 animate-fade-in pb-20">
+            <div className="flex items-center justify-between px-2">
+               <div className="space-y-1">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-white">Auditoria de Sistema</h3>
+                  <p className="text-[9px] text-[#A0A0A0] uppercase font-black tracking-widest">Logs em Tempo Real & Erros</p>
+               </div>
+               <div className="flex gap-2">
+                 <button 
+                   onClick={() => {
+                     if(confirm('Limpar todos os logs? Estar ação é irreversível.')) {
+                        storage.setLogs([]);
+                        refreshData();
+                     }
+                   }}
+                   className="text-[9px] font-black uppercase text-red-500/50 hover:text-red-500 px-3 py-1.5 border border-red-500/10 rounded-lg transition-all"
+                 >
+                   Limpar
+                 </button>
+                 <button onClick={refreshData} className="p-2 text-[#7B2CBF] bg-[#7B2CBF]/10 rounded-xl"><RefreshCw size={14} /></button>
+               </div>
+            </div>
+
+            <div className="bg-[#1A1A1A] border border-[#2D2D2D] rounded-[40px] overflow-hidden">
+               <div className="p-4 bg-black/40 border-b border-[#2D2D2D] flex items-center gap-3">
+                  <Terminal size={14} className="text-[#666]" />
+                  <span className="text-[9px] font-black uppercase text-[#444] tracking-widest italic font-mono">system@foxmanager:~$ cat audit.log</span>
+               </div>
+               <div className="max-h-[600px] overflow-y-auto p-4 space-y-2 font-mono scrollbar-thin scrollbar-thumb-[#7B2CBF33]">
+                  {logs.length === 0 ? (
+                    <div className="py-20 text-center space-y-3 opacity-20">
+                       <Terminal size={40} className="mx-auto" />
+                       <p className="text-[10px] font-black uppercase tracking-[0.2em]">Nenhum registro encontrado</p>
+                    </div>
+                  ) : (
+                    [...logs].reverse().map((log, i) => (
+                      <div key={i} className={`p-3 rounded-xl border ${
+                        log.type === 'error' ? 'bg-red-500/5 border-red-500/10 text-red-400' :
+                        log.type === 'admin' ? 'bg-[#7B2CBF]/5 border-[#7B2CBF]/10 text-[#7B2CBF]' :
+                        'bg-white/2 border-white/5 text-[#A0A0A0]'
+                      }`}>
+                         <div className="flex justify-between items-start mb-1">
+                            <span className={`text-[7px] font-bold px-1.5 py-0.5 rounded uppercase tracking-widest ${
+                              log.type === 'error' ? 'bg-red-500/20' : 
+                              log.type === 'admin' ? 'bg-[#7B2CBF]/20 text-white' : 
+                              'bg-white/10 text-white'
+                            }`}>
+                               {log.type}
+                            </span>
+                            <span className="text-[8px] font-medium opacity-50">{new Date(log.timestamp).toLocaleString()}</span>
+                         </div>
+                         <p className="text-[10px] font-medium leading-relaxed break-words">
+                            <span className="text-white/40 mr-2">[{log.user}]</span>
+                            {log.text}
+                            {log.details && (
+                              <div className="mt-2 text-[9px] bg-black/40 p-2 rounded-lg border border-white/5 overflow-x-auto whitespace-pre-wrap">
+                                {typeof log.details === 'string' ? log.details : JSON.stringify(log.details, null, 2)}
+                              </div>
+                            )}
+                         </p>
+                      </div>
+                    ))
+                  )}
+               </div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1050,6 +1544,82 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                       />
                     </div>
                   </>
+                ) : editingItem._type === 'code' ? (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-[#444] ml-2">Código (ID)</label>
+                      <input 
+                        value={editingItem.id || ''} 
+                        onChange={e => setEditingItem({...editingItem, id: e.target.value.toUpperCase().replace(/\s/g, '')})}
+                        placeholder="EX: FOXVIP2024"
+                        className="w-full bg-black/40 border border-[#2D2D2D] rounded-2xl px-6 py-4 text-xs text-white uppercase font-black outline-none focus:border-[#7B2CBF]"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                       <div className="space-y-1">
+                          <label className="text-[9px] font-black uppercase text-[#444] ml-2">Tipo de Benefício</label>
+                          <select 
+                            value={editingItem.type}
+                            onChange={e => setEditingItem({...editingItem, type: e.target.value})}
+                            className="w-full bg-black/40 border border-[#2D2D2D] rounded-2xl px-4 py-4 text-xs text-white font-black uppercase outline-none focus:border-[#7B2CBF]"
+                          >
+                            <option value="badge">Badge</option>
+                            <option value="role">Role (Cargo)</option>
+                            <option value="level">Nível (XP)</option>
+                            <option value="status">Status Especial</option>
+                          </select>
+                       </div>
+                       <div className="space-y-1">
+                          <label className="text-[9px] font-black uppercase text-[#444] ml-2">Usos Máximos</label>
+                          <input 
+                            type="number"
+                            value={editingItem.maxUses || 100} 
+                            onChange={e => setEditingItem({...editingItem, maxUses: parseInt(e.target.value) || 100})}
+                            className="w-full bg-black/40 border border-[#2D2D2D] rounded-2xl px-6 py-4 text-xs text-white font-black outline-none focus:border-[#7B2CBF]"
+                          />
+                       </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-[#444] ml-2">Valor da Recompensa</label>
+                      <input 
+                        value={editingItem.value || ''} 
+                        onChange={e => setEditingItem({...editingItem, value: e.target.value})}
+                        placeholder="Nome da Badge, ADM, ou +5"
+                        className="w-full bg-black/40 border border-[#2D2D2D] rounded-2xl px-6 py-4 text-xs text-white uppercase font-black outline-none focus:border-[#7B2CBF]"
+                      />
+                    </div>
+                  </>
+                ) : editingItem._type === 'event' ? (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-[#444] ml-2">Título do Evento</label>
+                      <input 
+                        value={editingItem.title || ''} 
+                        onChange={e => setEditingItem({...editingItem, title: e.target.value})}
+                        className="w-full bg-black/40 border border-[#2D2D2D] rounded-2xl px-6 py-4 text-xs text-white uppercase font-black outline-none focus:border-[#7B2CBF]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-[#444] ml-2">Tipo</label>
+                      <select 
+                        value={editingItem.type}
+                        onChange={e => setEditingItem({...editingItem, type: e.target.value})}
+                        className="w-full bg-black/40 border border-[#2D2D2D] rounded-2xl px-4 py-4 text-xs text-white font-black uppercase outline-none focus:border-[#7B2CBF]"
+                      >
+                        <option value="challenge">Desafio</option>
+                        <option value="boost">Boost Global</option>
+                        <option value="announcement">Anúncio</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-[#444] ml-2">Descrição / Regras</label>
+                      <textarea 
+                        value={editingItem.description || ''} 
+                        onChange={e => setEditingItem({...editingItem, description: e.target.value})}
+                        className="w-full bg-black/40 border border-[#2D2D2D] rounded-2xl px-6 py-4 text-[10px] text-white min-h-[100px] outline-none focus:border-[#7B2CBF]"
+                      />
+                    </div>
+                  </>
                 ) : (
                   <>
                     <div className="space-y-1">
@@ -1087,6 +1657,10 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                         } else if (editingItem._type === 'genlist') {
                           const updated = genLists.map(g => g.id === editingItem.id ? editingItem : g);
                           await storage.setGenLists(updated);
+                        } else if (editingItem._type === 'code') {
+                          await storage.addCode(editingItem);
+                        } else if (editingItem._type === 'event') {
+                          await storage.addWeeklyEvent(editingItem);
                         } else {
                           // Generic library idea or challenge
                           if (activePanel === 'library') {
@@ -1096,7 +1670,7 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                       } else {
                         // CREATE NEW
                         const newId = Math.random().toString(36).substr(2, 9);
-                        const itemWithId = { ...editingItem, id: newId };
+                        const itemWithId = { ...editingItem, id: editingItem._type === 'code' ? editingItem.id : newId };
                         delete itemWithId._type;
 
                         if (editingItem._type === 'career') {
@@ -1106,6 +1680,14 @@ export default function AdminDashboard({ user, onBack }: AdminDashboardProps) {
                           await storage.setCommunityTips([...tips, { ...itemWithId, authorId: userToUse.id, authorName: userToUse.name, createdAt: Date.now(), status: 'approved', publishedToCommunity: true }]);
                         } else if (editingItem._type === 'genlist') {
                           await storage.setGenLists([...genLists, itemWithId]);
+                        } else if (editingItem._type === 'code') {
+                          if (!itemWithId.id) {
+                            alert('Erro: O código precisa de um nome/ID.');
+                            return;
+                          }
+                          await storage.addCode(itemWithId);
+                        } else if (editingItem._type === 'event') {
+                          await storage.addWeeklyEvent(itemWithId);
                         } else {
                           if (activePanel === 'library') await storage.setOfficialChallenges([...challenges, itemWithId]);
                         }

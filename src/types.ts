@@ -10,17 +10,64 @@ export enum UserRole {
   USER = 'USER',
 }
 
+export interface PromoCode {
+  id: string; // O próprio código (ex: FOX-PRO-2024)
+  type: 'badge' | 'role' | 'level' | 'status';
+  value: string; // O que ele dá (ex: "Elite Member", "ADM", "5")
+  uses: number;
+  maxUses: number;
+  createdBy: string;
+  createdAt: number;
+  expiresAt?: number;
+}
+
+export interface WeeklyEvent {
+  id: string;
+  title: string;
+  description: string;
+  startDate: number;
+  endDate: number;
+  isActive: boolean;
+  type: 'challenge' | 'community' | 'news';
+  rewardIcon?: string;
+  badgeId?: string;
+}
+
+export interface HallOfFameEntry {
+  id: string;
+  saveId: string;
+  userId: string;
+  userName: string;
+  team: string;
+  titles: number;
+  seasons: number;
+  bestPlayer: string;
+  reason: string;
+  date: number;
+}
+
+export interface RandomEvent {
+  id: string;
+  title: string;
+  description: string;
+  impact: 'positive' | 'negative' | 'neutral';
+  type: 'financial' | 'player' | 'transfer' | 'club';
+}
+
 export interface User {
   id: string;
   name: string;
   email: string;
   password?: string;
   photoUrl?: string;
+  bannerUrl?: string; // Profile Banner
   bio?: string;
   role: UserRole;
   favoriteGames: string[];
   level: number;
+  xp: number;
   badges: string[];
+  usedCodes?: string[];
   favorites: {
     challenges: string[];
     ideas: string[];
@@ -34,11 +81,29 @@ export interface User {
 export interface SaveHistoryItem {
   id: string;
   season: string;
+  seasonNumber?: number;
   content: string;
+  type?: 'normal' | 'milestone' | 'title' | 'season_start' | 'season_end';
+  icon?: string;
+  badge?: string;
   titles?: string;
   bestPlayer?: string;
   wins?: number;
   losses?: number;
+  draws?: number;
+  goalsFor?: number;
+  goalsAgainst?: number;
+  maxUnbeatenRun?: number;
+  isFeatured?: boolean;
+  imageUrl?: string;
+  squad?: {
+    goalie?: string;
+    captain?: string;
+    topScorer?: string;
+    youngTalent?: string;
+    starPlayer?: string;
+  };
+  tactic?: string;
   date: number;
 }
 
@@ -69,25 +134,66 @@ export interface SaveGoal {
 export interface Save {
   id: string;
   userId: string;
+  managerName?: string;
   name: string;
   game: string;
   team: string;
+  country?: string;
+  league?: string;
+  stadiumName?: string;
+  stadiumCapacity?: number;
+  managerPersonality?: string;
   season: string;
   tactic: string;
   philosophy?: string;
   objective: string;
+  miniHistory?: string;
+  category: string;
+  minSeasons?: number;
+  maxSeasons?: number;
+  selectedDuration: number;
+  specificRules?: string[];
+  challengeBadge?: string;
   difficulty: string;
   description: string;
-  images: string[];
+  rewardBadge?: string;
+  tags?: string[];
+  bannerStyle?: string;
+  originId?: string; // ID of the career/tip/suggestion accepted
+  status: 'active' | 'finished';
+  isCEOChoice?: boolean;
+  coherenceScore?: number;
+  isExtreme?: boolean;
+  unusualStatsAlert?: boolean;
+  theme: 'default' | 'neon' | 'stadium' | 'classic' | 'retro';
+  clubHistory: {
+    team: string;
+    season: string;
+    country?: string;
+    titles?: number;
+  }[];
+  images: string[]; // This can serve as the gallery
   history: SaveHistoryItem[];
   goals: SaveGoal[];
+  importantPlayers?: {
+    id: string;
+    name: string;
+    role: 'artilheiro' | 'garçom' | 'paredão' | 'líder' | 'promessa' | 'craque';
+    rating?: number;
+    season: string;
+  }[];
   stats?: {
     seasonsPlayed: number;
     titles: number;
     wins: number;
     losses: number;
+    draws?: number;
+    goalsFor?: number;
+    goalsAgainst?: number;
     bestPlayer: string;
     progress: number; // 0-100
+    maxUnbeatenRun?: number;
+    winRate?: number;
   };
   createdAt: number;
   updatedAt: number;
@@ -152,13 +258,24 @@ export interface ImportedCareer {
   createdAt: number;
 }
 
-export interface AppLog {
+export interface SystemUpdate {
   id: string;
   title: string;
   version: string;
   date: number;
   type: 'update' | 'fix' | 'news';
   description: string;
+}
+
+export interface AppLog {
+  id: string;
+  user: string;
+  text: string;
+  type: 'info' | 'admin' | 'error';
+  timestamp: number;
+  details?: any;
+  title?: string; // Legacy support
+  message?: string; // Legacy support
 }
 
 export interface GeneratorItem {
@@ -191,6 +308,12 @@ export interface GeneratorResult {
   difficulty?: string;
   game?: string;
   type?: string;
+  country?: string;
+  league?: string;
+  miniHistory?: string;
+  duration?: string;
+  tags?: string[];
+  rewardBadge?: string;
   timestamp: number;
 }
 
@@ -199,4 +322,9 @@ export interface UserStats {
   lastGenerationDate: string; // YYYY-MM-DD
   savesCreatedThisMonth: number;
   lastSaveDate: string; // YYYY-MM-DD
+  // Performance Stats
+  totalTitles?: number;
+  totalSeasons?: number;
+  maxUnbeatenRun?: number;
+  bestSaveId?: string;
 }
